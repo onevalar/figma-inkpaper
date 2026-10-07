@@ -1,0 +1,9 @@
+node_modules/
+dist/
+test/out/
+test/dist/
+# Adobe ICC profiles may not be redistributed — put your own copy here to run the tests
+test/fixtures/*.icc
+test/fixtures/*.icm
+.claude/
+.DS_Store

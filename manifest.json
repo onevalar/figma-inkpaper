@@ -1,0 +1,10 @@
+{
+  "name": "PressKit Print Export · 印刷导出",
+  "id": "presskit-print-export-local",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": { "allowedDomains": ["none"], "reasoning": "所有颜色转换和 PDF 处理都在本地完成，不上传任何设计文件。" }
+}

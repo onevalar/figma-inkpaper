@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset=utf-8><style>
+@page{size:210mm 297mm;margin:0} body{margin:0;font-family:Helvetica}
+.bg{position:absolute;left:0;top:0;width:210mm;height:60mm;background:#e30613}
+.k{position:absolute;left:10mm;top:70mm;font-size:12pt;color:#000}
+.grad{position:absolute;left:10mm;top:90mm;width:90mm;height:40mm;background:linear-gradient(90deg,#00a0e9,#fff100)}
+.rad{position:absolute;left:110mm;top:90mm;width:90mm;height:40mm;background:radial-gradient(circle,#e4007f,#1d2088)}
+.op{position:absolute;left:10mm;top:140mm;width:60mm;height:30mm;background:#009944;opacity:.5}
+.blend{position:absolute;left:40mm;top:150mm;width:60mm;height:30mm;background:#f39800;mix-blend-mode:multiply}
+.shadow{position:absolute;left:120mm;top:140mm;width:60mm;height:30mm;background:#fff;box-shadow:4px 4px 10px rgba(0,0,0,.5)}
+img{position:absolute}
+.stroke{position:absolute;left:10mm;top:250mm;width:80mm;height:20mm;border:0.1px solid #000}
+</style></head><body>
+<div class=bg></div><div class=k>纯黑正文 Pure black body text 0123</div>
+<div class=grad></div><div class=rad></div><div class=op></div><div class=blend></div><div class=shadow></div>
+<img src=photo.jpg style="left:10mm;top:185mm;width:90mm">
+<img src=alpha.png style="left:110mm;top:185mm;width:50mm">
+<img src=lowres.png style="left:165mm;top:185mm;width:40mm">
+<div class=stroke></div><a href="https://example.com" style="position:absolute;left:110mm;top:255mm">link</a>
+</body></html>

@@ -1,0 +1,60 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>PressKit harness</title>
+<style>body{margin:0;display:flex;gap:16px;font:12px sans-serif;background:#2c2c2c;color:#ddd}iframe{width:480px;height:740px;border:0;background:#fff;margin:16px}#log{flex:1;white-space:pre-wrap;padding:16px;font:11px monospace;overflow:auto;height:100vh;box-sizing:border-box}</style></head>
+<body><iframe id="ui" src="../dist/ui.html"></iframe><div id="log"></div>
+<script>
+// Fake Figma main thread: answers the UI's messages so the UI + export pipeline can be tested in a real browser.
+const MM = 72/25.4;
+const store = {};
+const log = (...a) => { document.getElementById('log').textContent += a.join(' ') + '\n'; };
+const ui = document.getElementById('ui');
+const send = (msg) => ui.contentWindow.postMessage({ pluginMessage: msg }, '*');
+const frames = [
+  { id: '1:1', name: 'A4 海报', w: 210*MM, h: 297*MM, meta: null },
+  { id: '1:2', name: '名片 正面', w: 96*MM, h: 60*MM, meta: { trimW: 90, trimH: 54, bleed: 3, margin: 0, safety: 3 } },
+];
+window.downloads = [];
+const origCreate = URL.createObjectURL;
+window.addEventListener('message', async (ev) => {
+  const m = ev.data && ev.data.pluginMessage; if (!m) return;
+  log('← ' + m.type + (m.key ? ' ' + m.key : ''));
+  switch (m.type) {
+    case 'init': {
+      const icc = new Uint8Array(await (await fetch('fixtures/JapanColor2001Coated.icc')).arrayBuffer());
+      store['pk_icc_jc'] = icc;
+      send({ type: 'init', settings: store.pk_settings || null, profiles: [{ id: 'jc', name: 'Japan Color 2001 Coated', size: icc.length }], maps: [], presets: [], docProfile: 'SRGB', fileName: '测试文件' });
+      send({ type: 'selection', frames, explicit: true, measure: [{ id: '2:1', name: '红色通栏', type: 'RECTANGLE', w: 612, h: 190, cornerRadius: 0, hasImage: false }, { id: '3:1', name: '标题', type: 'TEXT', w: 300, h: 40, fontSize: 32 }, { id: '4:1', name: '主视觉', type: 'RECTANGLE', w: 300, h: 200, strokeWeight: 1, cornerRadius: 4, hasImage: true }] });
+      break; }
+    case 'store-get': send({ type: 'store-value', key: m.key, value: store[m.key], reqId: m.reqId }); break;
+    case 'store-set': store[m.key] = m.value; break;
+    case 'scan-colors': send({ type: 'colors', colors: [
+      { hex: '#E30613', count: 4, where: ['fill'], inGradient: false, sampleNode: '2:1' },
+      { hex: '#000000', count: 12, where: ['text'], inGradient: false },
+      { hex: '#00A0E9', count: 2, where: ['gradient'], inGradient: true },
+      { hex: '#333333', count: 3, where: ['text'], inGradient: false },
+      { hex: '#FFFFFF', count: 1, where: ['fill'], inGradient: false } ] }); break;
+    case 'scan-text': send({ type: 'texts', texts: [
+      { id: '3:1', frame: 'A4 海报', name: '标题', preview: '夏日音乐节', fonts: ['PingFang SC Semibold'], size: 48, hasEffects: true, missingFont: false, mode: 'live' },
+      { id: '3:2', frame: 'A4 海报', name: '正文', preview: '时间：8月20日 地点：…', fonts: ['PingFang SC Regular'], size: 9, hasEffects: false, missingFont: false, mode: 'live' } ] }); break;
+    case 'preflight': send({ type: 'preflight', issues: [
+      { level: 'info', cat: 'geometry', frame: 'A4 海报', nodeId: '1:1', msg: '「A4 海报」没有出血。可在“文档”页添加，或导出时自动延伸边缘元素。' },
+      { level: 'warning', cat: 'resolution', frame: 'A4 海报', nodeId: '4:1', msg: '图片「主视觉」实际分辨率 152 ppi，低于 250 ppi，印刷会模糊。' } ],
+      images: [{ id: '4:1', frame: 'A4 海报', name: '主视觉', px: '1200×800', ppi: 152 }] }); break;
+    case 'export': {
+      const pdf = new Uint8Array(await (await fetch('fixtures/test.pdf')).arrayBuffer());
+      send({ type: 'progress', msg: '从 Figma 导出…', frac: 0.2 });
+      send({ type: 'exported', frames: [{ id: '1:1', name: 'A4 海报', pdf, trimW: 210*MM, trimH: 297*MM, srcBleed: 0, sentinels: [] }] });
+      break; }
+    case 'notify': log('NOTIFY: ' + m.text + (m.error ? ' (error)' : '')); break;
+  }
+});
+// capture downloads from the iframe
+ui.addEventListener('load', () => {
+  const w = ui.contentWindow;
+  const orig = w.HTMLAnchorElement.prototype.click;
+  w.HTMLAnchorElement.prototype.click = function () {
+    if (this.download) { window.downloads.push({ name: this.download, href: this.href }); log('DOWNLOAD ' + this.download); fetch(this.href).then(r => r.arrayBuffer()).then(b => { window.lastBytes = new Uint8Array(b); log('  bytes ' + b.byteLength); }); return; }
+    return orig.call(this);
+  };
+});
+</script></body></html>
