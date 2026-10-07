@@ -1,5 +1,5 @@
 /// <reference types="@figma/plugin-typings" />
-// PressKit — Figma main thread. Reads/modifies the document; all PDF / colour work happens in the UI iframe.
+// Inkpaper — Figma main thread. Reads/modifies the document; all PDF / colour work happens in the UI iframe.
 
 import {
   MM,
@@ -17,13 +17,13 @@ import {
 } from '../shared';
 import { tr, setLang } from '../i18n/i18n';
 
-const META_KEY = 'presskit';
+const META_KEY = 'presskit'; // legacy key name, kept so existing print frames are still recognised
 const TEXT_KEY = 'pk_text';
 const LABEL_KEY = 'pk_label_for';
 
 const notify = (text: string, opts?: NotificationOptions) => figma.notify(tr(text), opts);
 
-figma.showUI(__html__, { width: 480, height: 740, themeColors: true, title: 'PressKit' });
+figma.showUI(__html__, { width: 480, height: 740, themeColors: true, title: 'Inkpaper 纸墨' });
 
 // ---------------- helpers ----------------
 

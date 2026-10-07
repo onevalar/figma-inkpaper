@@ -77,7 +77,7 @@ export interface Sides {
 }
 export const uni = (v: number): Sides => ({ t: v, r: v, b: v, l: v });
 
-/** Stored on print frames (pluginData key "presskit"). */
+/** Stored on print frames (pluginData key "presskit", the plugin's former name). */
 export interface FrameMeta {
   trimW: number; // mm
   trimH: number; // mm

@@ -1,4 +1,4 @@
-# PressKit 印刷导出：竞品调研与功能对照
+# Inkpaper 纸墨：竞品调研与功能对照
 
 更新日期：2026-10-07
 调研范围：Figma Community 中所有与印刷、CMYK、出血、拼版、刀版、PDF 导出相关的插件，共 48 个。资料来源是各插件在 Figma Community 的完整说明。
@@ -35,10 +35,10 @@
 
 ## 2. 功能对照
 
-✅ = PressKit 已具备，并且所有功能都在本地完成，不上传设计稿。
+✅ = Inkpaper 已具备，并且所有功能都在本地完成，不上传设计稿。
 
 ### 文档与版面
-| 功能 | 来源 | PressKit |
+| 功能 | 来源 | Inkpaper |
 |---|---|---|
 | 标准纸张预设（A / B 系列、国内开本、北美、名片、明信片、海报、易拉宝、X 展架、吊牌、领标、贴纸、T 恤印花、邀请函、门票） | 多数插件 | ✅ |
 | 自定义尺寸，并保存为常用尺寸 | Print for Figma、Printery、PrintFrame | ✅ |
@@ -53,7 +53,7 @@
 | 实物尺寸测量与修改（宽高、字号、描边、圆角） | Print Ruler、Figma for Print | ✅ |
 
 ### 颜色
-| 功能 | 来源 | PressKit |
+| 功能 | 来源 | Inkpaper |
 |---|---|---|
 | CMYK / RGB / 灰度输出 | 全部 | ✅ |
 | ICC 色彩转换，可导入任意 ICC | Print for Figma、PrinTriX、XPrint | ✅ |
@@ -71,14 +71,14 @@
 | 色卡标注（HEX / RGB / CMYK / 专色名 / 样式名） | Color Swatch Info | ✅ |
 
 ### 文字
-| 功能 | 来源 | PressKit |
+| 功能 | 来源 | Inkpaper |
 |---|---|---|
 | 保留可选中、可搜索的文字（含中文） | Typeport、MKitFPdf | ✅（实测 PDF 可提取中文文字） |
 | 按图层选择转曲 / 保留文字 | PrinTriX、XPrint | ✅ |
 | 缺字体、带效果文字提示 | PrinTriX | ✅ |
 
 ### 预检
-| 功能 | 来源 | PressKit |
+| 功能 | 来源 | Inkpaper |
 |---|---|---|
 | 图片实际分辨率，低于阈值时提醒或禁止导出 | Print for Figma、PrinTriX | ✅ |
 | 出血不足、安全区、细线、小字号、混合模式、注释 | PrinTriX、i Print | ✅ |
@@ -88,7 +88,7 @@
 | 低清图片放大 2 倍、替换图片并保留裁切 | Print Ready、Prink | ✅ |
 
 ### 包装
-| 功能 | 来源 | PressKit |
+| 功能 | 来源 | Inkpaper |
 |---|---|---|
 | 按图层名识别刀线、折线、压痕、打孔、光油、白墨、烫金，各自输出为专色版并叠印 | PrinTriX | ✅ |
 | 刀线输出为真正的单线路径（Figma 原生导出会变成双线） | Print Studio | ✅ |
@@ -97,7 +97,7 @@
 | 纸盒刀版生成（插舌盒、托盘盒、飞机盒） | Box Dieline Generator | ✅ |
 
 ### 导出
-| 功能 | 来源 | PressKit |
+| 功能 | 来源 | Inkpaper |
 |---|---|---|
 | 多页合并 / 每页单独文件、拖拽排序、缩略图 | 多数插件 | ✅ |
 | 裁切线、套准标记、色标条、成品框线 | Printery、PDF Export Pro、Print Ready | ✅ |
@@ -114,7 +114,7 @@
 | 设置汇总标签 | PrinTriX | ✅ |
 
 ### 界面
-| 功能 | 来源 | PressKit |
+| 功能 | 来源 | Inkpaper |
 |---|---|---|
 | 多语言 | PrintLab（12 种）、PDF Export Pro、CMYK Print Toolkit | ✅ 8 种：简体中文、繁體中文、English、日本語、한국어、Español、Deutsch、Français；默认跟随系统语言，可手动切换 |
 | 深色 / 浅色主题 | CMYK Print Toolkit | ✅ 跟随 Figma |

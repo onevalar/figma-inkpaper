@@ -1,4 +1,4 @@
-// PressKit UI (runs in the plugin iframe). Holds settings, runs the colour engine and the PDF pipeline.
+// Inkpaper UI (runs in the plugin iframe). Holds settings, runs the colour engine and the PDF pipeline.
 
 import { ColorEngine, ColorOverride, ColorSettings, CMYK, loadLcms, tac } from '../pdf/color';
 import { runExport, setJpegDecoder, setPngDecoder, rasterExport, ExportResult, Imposition, uniform } from '../pdf/pipeline';
@@ -1441,7 +1441,7 @@ document.addEventListener('click', async (ev) => {
       render();
       break;
     case 'export-json':
-      download('PressKit 预设与颜色映射.json', new TextEncoder().encode(JSON.stringify({ presets: S.presets, maps: allMaps().map(({ file: _f, ...m }) => m) }, null, 2)), 'application/json');
+      download('Inkpaper 预设与颜色映射.json', new TextEncoder().encode(JSON.stringify({ presets: S.presets, maps: allMaps().map(({ file: _f, ...m }) => m) }, null, 2)), 'application/json');
       break;
     case 'import-json': {
       const f = await pickFile('.json,application/json');
@@ -1455,7 +1455,7 @@ document.addEventListener('click', async (ev) => {
         notify(`已导入 ${j.presets?.length || 0} 个预设、${j.maps?.length || 0} 个颜色映射表`);
         render();
       } catch {
-        notify('不是有效的 PressKit JSON 文件', true);
+        notify('不是有效的 Inkpaper JSON 文件', true);
       }
       break;
     }

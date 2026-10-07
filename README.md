@@ -1,4 +1,6 @@
-# PressKit 印刷导出（Figma 插件）
+# Inkpaper 纸墨（Figma 印刷导出插件）
+
+> 名字取自 ink（油墨）+ paper（纸），中文「纸墨」：把屏幕上的设计，变成纸上的墨。
 
 在 Figma 里做印刷排版，导出可以直接交给印刷厂的文件，包括：
 - **色彩**：CMYK / ICC 色彩管理、专色、叠印、总墨量控制
@@ -14,7 +16,7 @@
 
 1. Figma 桌面版 → 菜单「插件 Plugins」→「开发 Development」→「从清单导入 Import plugin from manifest…」
 2. 选择本文件夹里的 `manifest.json`
-3. 以后在「插件 → 开发」里运行「PressKit 印刷导出」
+3. 以后在「插件 → 开发」里运行「Inkpaper 纸墨」
 
 > 导入开发插件需要 Figma 的完整席位（Full seat）。
 

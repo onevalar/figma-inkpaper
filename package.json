@@ -1,7 +1,7 @@
 {
-  "name": "figma-presskit",
+  "name": "figma-inkpaper",
   "version": "1.0.0",
-  "description": "",
+  "description": "Inkpaper 纸墨 — local CMYK / print-ready PDF export plugin for Figma",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

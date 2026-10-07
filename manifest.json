@@ -1,5 +1,5 @@
 {
-  "name": "PressKit Print Export · 印刷导出",
+  "name": "Inkpaper 纸墨",
   "id": "presskit-print-export-local",
   "api": "1.0.0",
   "main": "dist/code.js",

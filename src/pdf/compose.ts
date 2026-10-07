@@ -214,8 +214,8 @@ export async function compose(sources: PageSource[], o: ComposeOptions): Promise
   if (o.author) out.setAuthor(o.author);
   if (o.subject) out.setSubject(o.subject);
   if (o.keywords) out.setKeywords(o.keywords.split(/[,，]/).map((s) => s.trim()).filter(Boolean));
-  out.setCreator('PressKit for Figma');
-  out.setProducer('PressKit for Figma (pdf-lib)');
+  out.setCreator('Inkpaper for Figma');
+  out.setProducer('Inkpaper for Figma (pdf-lib)');
   out.setCreationDate(now);
   out.setModificationDate(now);
   const id = randomHex(16);
@@ -542,8 +542,8 @@ function xmpPacket(a: { title: string; author?: string; subject?: string; keywor
    <xmp:CreateDate>${d}</xmp:CreateDate>
    <xmp:ModifyDate>${d}</xmp:ModifyDate>
    <xmp:MetadataDate>${d}</xmp:MetadataDate>
-   <xmp:CreatorTool>PressKit for Figma</xmp:CreatorTool>
-   <pdf:Producer>PressKit for Figma (pdf-lib)</pdf:Producer>
+   <xmp:CreatorTool>Inkpaper for Figma</xmp:CreatorTool>
+   <pdf:Producer>Inkpaper for Figma (pdf-lib)</pdf:Producer>
    <pdf:Trapped>False</pdf:Trapped>
    <xmpMM:DocumentID>uuid:${a.id}</xmpMM:DocumentID>
    <xmpMM:InstanceID>uuid:${a.id}</xmpMM:InstanceID>

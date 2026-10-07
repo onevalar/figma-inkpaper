@@ -54,7 +54,7 @@ export function encodeTiff(px: Uint8Array, w: number, h: number, comps: 1 | 3 | 
   const data = pako.deflate(px.subarray(0, w * h * comps));
   type Entry = [number, number, number, number[] | Uint8Array]; // tag, type, count, values
   const SHORT = 3, LONG = 4, RATIONAL = 5, UNDEF = 7, ASCII = 2;
-  const sw = new TextEncoder().encode('PressKit for Figma\0');
+  const sw = new TextEncoder().encode('Inkpaper for Figma\0');
   const entries: Entry[] = [
     [256, LONG, 1, [w]],
     [257, LONG, 1, [h]],
