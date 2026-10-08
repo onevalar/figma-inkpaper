@@ -43,8 +43,14 @@ window.addEventListener('message', async (ev) => {
     case 'export': {
       const pdf = new Uint8Array(await (await fetch('fixtures/test.pdf')).arrayBuffer());
       send({ type: 'progress', msg: '从 Figma 导出…', frac: 0.2 });
-      send({ type: 'exported', frames: [{ id: '1:1', name: 'A4 海报', pdf, trimW: 210*MM, trimH: 297*MM, srcBleed: 0, sentinels: [] }] });
+      send({ type: 'exported', frames: [{ id: '1:1', name: 'A4 海报', pdf, trimW: 210*MM, trimH: 297*MM, srcBleed: { t: 0, r: 0, b: 0, l: 0 }, scale: 1, sentinels: [], vectorStrokes: [], pageH: 297*MM, hairlinesFixed: 0 }] });
       break; }
+    case 'render': {
+      const png = new Uint8Array(await (await fetch('fixtures/test-raster.png')).arrayBuffer());
+      send({ type: 'rendered', id: m.id, name: (frames.find(f => f.id === m.id) || {}).name || 'page', png }); break; }
+    case 'thumbs': {
+      const png = new Uint8Array(await (await fetch('fixtures/test-raster.png')).arrayBuffer());
+      for (const id of m.ids) send({ type: 'thumb', id, png }); break; }
     case 'notify': log('NOTIFY: ' + m.text + (m.error ? ' (error)' : '')); break;
   }
 });

@@ -118,6 +118,7 @@
 |---|---|---|
 | 多语言 | PrintLab（12 种）、PDF Export Pro、CMYK Print Toolkit | ✅ 8 种：简体中文、繁體中文、English、日本語、한국어、Español、Deutsch、Français；默认跟随系统语言，可手动切换 |
 | 深色 / 浅色主题 | CMYK Print Toolkit | ✅ 跟随 Figma |
+| 按流程组织的界面（准备 → 检查 → 导出），专业设置打包成「印刷方案」 | — | ✅ 界面 v2，视觉沿用定制组件库的 Linear 主题 |
 
 ## 3. 不做的功能
 

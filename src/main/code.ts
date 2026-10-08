@@ -381,7 +381,7 @@ async function preflight(frames: Exportable[], o: PreflightOpts) {
     const bs = meta ? bleedOf(meta) : uni(0);
     const trim = { x: (bs.l * MM) / k, y: (bs.t * MM) / k, w: meta ? (meta.trimW * MM) / k : f.width, h: meta ? (meta.trimH * MM) / k : f.height };
     const safety = ((meta?.safety ?? 3) * MM) / k;
-    if (!meta) issues.push({ level: 'info', cat: 'geometry', frame: f.name, nodeId: f.id, msg: `「${f.name}」没有出血。可在“文档”页添加，或导出时自动延伸边缘元素。`, fix: 'autoBleed' });
+    if (!meta) issues.push({ level: 'info', cat: 'geometry', frame: f.name, nodeId: f.id, msg: `「${f.name}」没有出血。可在「准备」里添加，或导出时自动延伸边缘元素。`, fix: 'autoBleed' });
 
     const fx = f.absoluteTransform[0][2];
     const fy = f.absoluteTransform[1][2];
