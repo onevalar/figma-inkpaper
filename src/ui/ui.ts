@@ -20,7 +20,7 @@ import {
 import { zip } from './zip';
 import { parseAse, parseSwatchCsv, LibSwatch } from './ase';
 import { decodeToRgb, buildProof, paint, PreviewMode, ProofData } from './preview';
-import { tr, translateDom, setLang, detectLang, LANGS, missing, getLang, Lang } from '../i18n/i18n';
+import { tr, translateDom, setLang, detectLang, LANGS, missing, Lang } from '../i18n/i18n';
 
 declare const __LCMS_WASM_B64__: string;
 
@@ -93,6 +93,7 @@ interface Settings {
   box: { style: 'ste' | 'tray' | 'mailer'; w: number; d: number; h: number };
   pick: CMYK;
   onboarded: boolean;
+  advancedOpen: boolean;
   profileId: string;
   profileBase: Record<string, any>;
 }
@@ -169,6 +170,7 @@ const DEFAULTS: Settings = {
   box: { style: 'ste', w: 80, d: 40, h: 120 },
   pick: { c: 0, m: 100, y: 100, k: 0 },
   onboarded: false,
+  advancedOpen: false,
   profileId: 'coated',
   profileBase: {},
 };
@@ -207,20 +209,25 @@ interface Measure {
 
 type Route = 'welcome' | 'prepare' | 'check' | 'export';
 type CheckTab = 'issues' | 'preview' | 'colors' | 'text';
-type Sheet = '' | 'more' | 'imposition' | 'profile' | 'tools';
+type Sheet = '' | 'more' | 'imposition' | 'profile' | 'tools' | 'settings' | 'resources' | 'transfer';
 
 const S = {
   route: 'export' as Route,
   checkTab: 'issues' as CheckTab,
   sheet: '' as Sheet,
+  sheetStack: [] as Sheet[],
   routed: false,
   gotInit: false,
   gotSelection: false,
   docMore: false,
   passOpen: false,
   stdOpen: false,
-  mapOpen: false,
   resultOpen: false,
+  pagesOpen: false,
+  selectionRevision: 0,
+  checkError: '',
+  pendingCheckId: '',
+  confirmKey: '',
   toolOpen: '',
   previewIdx: 0,
   pvLoading: '',
@@ -266,10 +273,13 @@ function storeGet<T = any>(key: string): Promise<T> {
 }
 const waiters = new Map<string, (m: any) => void>();
 function request<T = any>(type: string, data: any, reply: string): Promise<T> {
+  const reqId = type === 'preflight' ? 'r' + reqSeq++ : '';
+  const key = reqId ? reply + ':' + reqId : reply;
+  const errorKey = reqId ? 'error:' + type + ':' + reqId : 'error:' + type;
   return new Promise((res, rej) => {
-    waiters.set(reply, res);
-    waiters.set('error:' + type, (m) => rej(new Error(m.message)));
-    post(type, data);
+    waiters.set(key, (m) => { waiters.delete(errorKey); res(m); });
+    waiters.set(errorKey, (m) => { waiters.delete(key); rej(new Error(m.message)); });
+    post(type, { ...data, ...(reqId ? { reqId } : {}) });
   });
 }
 let saveTimer: any = 0;
@@ -282,9 +292,10 @@ const notify = (text: string, error = false) => post('notify', { text: tr(text),
 window.onmessage = (ev) => {
   const m = ev.data?.pluginMessage;
   if (!m) return;
-  const w = waiters.get(m.type);
+  const replyKey = m.type === 'preflight' ? m.type + ':' + m.reqId : m.type;
+  const w = waiters.get(replyKey);
   if (w) {
-    waiters.delete(m.type);
+    waiters.delete(replyKey);
     w(m);
   }
   switch (m.type) {
@@ -313,6 +324,7 @@ window.onmessage = (ev) => {
       maybeRoute();
       break;
     case 'selection': {
+      S.selectionRevision++;
       S.frames = m.frames;
       S.measure = m.measure || [];
       const ids = S.frames.map((f) => f.id);
@@ -324,7 +336,10 @@ window.onmessage = (ev) => {
         S.colors = null;
         S.texts = null;
         S.previewIdx = 0;
-        if (!ids.length && S.sheet && S.sheet !== 'tools') S.sheet = '';
+        if (!ids.length && (S.sheet === 'more' || S.sheet === 'imposition')) {
+          S.sheet = '';
+          S.sheetStack = [];
+        }
       }
       S.gotSelection = true;
       maybeRoute();
@@ -350,9 +365,13 @@ window.onmessage = (ev) => {
       render();
       break;
     case 'preflight':
+      if (m.reqId !== S.pendingCheckId || S.pendingIssuesKey !== checkKey()) break;
+      S.pendingIssuesKey = '';
+      S.pendingCheckId = '';
+      S.colors = m.colors;
       S.baseIssues = m.issues;
       S.issues = [...m.issues, ...colorIssues()];
-      S.issuesKey = S.pendingIssuesKey;
+      S.issuesKey = checkKey();
       S.images = m.images;
       render();
       break;
@@ -367,11 +386,18 @@ window.onmessage = (ev) => {
       pending.delete(m.reqId);
       break;
     case 'error': {
-      const rej = waiters.get('error:' + m.during);
+      const key = 'error:' + m.during + (m.during === 'preflight' ? ':' + m.reqId : '');
+      const rej = waiters.get(key);
       if (rej) {
-        waiters.delete('error:' + m.during);
+        waiters.delete(key);
         rej(m);
       } else notify('出错了：' + m.message, true);
+      if (m.during === 'preflight' && m.reqId === S.pendingCheckId) {
+        S.pendingCheckId = '';
+        S.pendingIssuesKey = '';
+        S.checkError = m.message;
+        render();
+      }
       busy(false);
       break;
     }
@@ -454,6 +480,7 @@ async function refreshEngine() {
   }
   if (seq === engineSeq) {
     engine = e;
+    if (S.issues) S.issues = [...S.baseIssues, ...colorIssues()];
     if (S.preview) S.preview.data = undefined;
     render();
   }
@@ -540,16 +567,16 @@ function update(path: string, v: any) {
 const num = (path: string, opts: { min?: number; max?: number; step?: number; w?: number; unit?: boolean } = {}) => {
   const v = getPath(path);
   const shown = opts.unit ? toUnit(v) : v;
-  return `<input type="number" data-bind="${path}" data-t="num" ${opts.unit ? 'data-u="1"' : ''} value="${shown}" ${opts.min !== undefined ? `min="${opts.min}"` : ''} ${opts.max !== undefined ? `max="${opts.max}"` : ''} step="${opts.unit && S.settings.unit !== 'mm' ? 'any' : opts.step ?? 1}" ${opts.w ? `style="width:${opts.w}px"` : ''}>`;
+  return `<input id="setting-${path}" type="number" data-bind="${path}" data-t="num" ${opts.unit ? 'data-u="1"' : ''} value="${shown}" ${opts.min !== undefined ? `min="${opts.min}"` : ''} ${opts.max !== undefined ? `max="${opts.max}"` : ''} step="${opts.unit && S.settings.unit !== 'mm' ? 'any' : opts.step ?? 1}" ${opts.w ? `style="width:${opts.w}px"` : ''}>`;
 };
 const U = () => `<span class="unit">${S.settings.unit}</span>`;
-const txt = (path: string, ph = '') => `<input type="text" data-bind="${path}" value="${esc(getPath(path) ?? '')}" placeholder="${esc(ph)}">`;
+const txt = (path: string, ph = '') => `<input id="setting-${path}" type="text" data-bind="${path}" value="${esc(getPath(path) ?? '')}" placeholder="${esc(ph)}">`;
 const chk = (path: string, label: string, hint = '') =>
   `<label class="chk"><input type="checkbox" data-bind="${path}" data-t="bool" ${getPath(path) ? 'checked' : ''}><span>${label}${hint ? ` <span class="muted">${hint}</span>` : ''}</span></label>`;
 const seg = (path: string, opts: [any, string][]) =>
-  `<div class="seg">${opts.map(([v, l]) => `<button data-act="seg" data-path="${path}" data-v="${esc(JSON.stringify(v))}" class="${getPath(path) === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  `<div class="seg">${opts.map(([v, l]) => `<button data-act="seg" data-path="${path}" data-v="${esc(JSON.stringify(v))}" aria-pressed="${getPath(path) === v}" class="${getPath(path) === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
 const sel = (path: string, opts: [any, string][], t = 'str') =>
-  `<select data-bind="${path}" data-t="${t}">${opts.map(([v, l]) => `<option value="${esc(String(v))}" ${String(getPath(path)) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  `<select id="setting-${path}" data-bind="${path}" data-t="${t}">${opts.map(([v, l]) => `<option value="${esc(String(v))}" ${String(getPath(path)) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
 const sides4 = (base: string) =>
   `<div class="grid4">${(['t', 'r', 'b', 'l'] as const).map((k) => `<label>${{ t: '上', r: '右', b: '下', l: '左' }[k]}${num(`${base}.${k}`, { min: 0, step: 0.5, w: 54, unit: true })}</label>`).join('')}</div>`;
 
@@ -595,6 +622,7 @@ function applyLang() {
 // renders requested from a change are deferred until the press is over, and afterwards the
 // cursor is put back into whichever field had focus.
 const fieldKey = (el: Element | null): string | null => {
+  if (el instanceof HTMLButtonElement && el.dataset.act) return `button[data-act="${CSS.escape(el.dataset.act)}"]${['v', 'path', 'dir'].filter((k) => el.dataset[k] !== undefined).map((k) => `[data-${k}="${CSS.escape(el.dataset[k]!)}"]`).join('')}`;
   if (!el || !(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) return null;
   if (el.id) return `#${CSS.escape(el.id)}`;
   if (el.dataset.bind) return `[data-bind="${CSS.escape(el.dataset.bind)}"]`;
@@ -666,7 +694,7 @@ function maybeRoute() {
 /** Side effects of arriving at (or staying on) a screen with the current selection. */
 function onEnter() {
   if (S.route !== 'check' || !S.frames.length) return;
-  if (S.issuesKey !== selectionKey() && S.pendingIssuesKey !== selectionKey()) runPreflight();
+  if (S.issuesKey !== checkKey() && S.pendingIssuesKey !== checkKey()) runPreflight();
   if (!S.texts) post('scan-text');
   if (S.checkTab === 'preview') ensurePreview();
 }
@@ -691,12 +719,15 @@ function renderInner() {
   $('head').innerHTML = viewHead();
   translateDom($('head'));
   const main = $('view');
+  main.classList.toggle('workbench', S.route === 'export' && !S.sheet);
   const key = S.route + '/' + S.sheet + '/' + S.checkTab;
   const scroll = key === lastViewKey ? main.scrollTop : 0;
   lastViewKey = key;
   main.innerHTML = viewMain();
   translateDom(main);
   main.scrollTop = scroll;
+  const dialog = $('export-confirm') as HTMLDialogElement;
+  if (dialog.open && (S.route !== 'export' || S.sheet || S.confirmKey !== confirmationKey())) dialog.close();
   if (S.route === 'check' && S.checkTab === 'preview' && !S.sheet) paintPreview();
   renderFoot();
 }
@@ -708,9 +739,9 @@ const IC = {
   chev: `<svg class="chev" width="12" height="12" viewBox="0 0 12 12"><path d="M3 4.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>`,
   right: `<svg width="10" height="10" viewBox="0 0 10 10" style="flex:none;color:var(--fg2)"><path d="M3.5 2l3 3-3 3" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg>`,
   back: `<svg width="14" height="14" viewBox="0 0 12 12"><path d="M7.5 2.5L4 6l3.5 3.5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>`,
-  check: `<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5.2l2 2 4-4.4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   arrow: `<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   grid: `<svg width="14" height="14" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><rect x="8" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><rect x="1.5" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><rect x="8" y="8" width="4.5" height="4.5" rx="2.25" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>`,
+  gear: `<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.6 2.4-2 .9L4.2 6l-2 3.5 1.6 1.8v2.4l-1.6 1.8 2 3.5 2.2-.3 2 .9L9 22h6l.6-2.4 2-.9 2.2.3 2-3.5-1.6-1.8v-2.4l1.6-1.8-2-3.5-2.2.3-2-.9L15 3Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="12.5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`,
   plus: `<svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`,
   upload: `<svg width="22" height="22" viewBox="0 0 22 22"><path d="M11 14V3M6.5 7.5L11 3l4.5 4.5M3 15v3a1 1 0 001 1h14a1 1 0 001-1v-3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   okCircle: `<svg width="14" height="14" viewBox="0 0 14 14" style="flex:none"><circle cx="7" cy="7" r="6" fill="var(--ok)"/><path d="M4.2 7.2l1.9 1.9 3.7-4" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
@@ -724,7 +755,7 @@ const sheetHead = (title: string, right = '') => `<div class="sheet-h"><button c
 const disclose = (act: string, open: boolean, title: string, sub = '') =>
   `<button class="disclose ${open ? 'open' : ''}" data-act="${act}"><span class="grow" style="display:flex;flex-direction:column;gap:2px"><span class="t">${title}</span>${sub ? `<span class="muted xs ell">${sub}</span>` : ''}</span>${IC.chev}</button>`;
 const langSelect = () =>
-  `<select id="lang" title="Language" class="lang" data-notr>${LANGS.map((l) => `<option value="${l.code}" ${getLang() === l.code ? 'selected' : ''}>${l.name}</option>`).join('')}</select>`;
+  `<select id="lang" data-notr><option value="" ${!S.settings.lang ? 'selected' : ''}>${tr('跟随系统')}</option>${LANGS.map((l) => `<option value="${l.code}" ${S.settings.lang === l.code ? 'selected' : ''}>${l.name}</option>`).join('')}</select>`;
 
 function frameSize(f: FrameInfo) {
   const k = f.meta?.scale || 1;
@@ -732,8 +763,10 @@ function frameSize(f: FrameInfo) {
 }
 const orderedFrames = () => S.order.map((id) => S.frames.find((f) => f.id === id)).filter(Boolean) as FrameInfo[];
 const selectionKey = () => S.order.join(',');
+const checkKey = () => JSON.stringify([S.frames.map((f) => f.id).sort(), S.selectionRevision, preflightOpts(), colorSettings(), pick(S.settings, ['iccId', 'colorFinishing', 'bleedMm', 'bleedSidesOn', 'bleedSides', 'autoBleed', 'format', 'rasterDpi', 'pdfx', 'scalePct', 'textOutline', 'imp'])]);
 /** Preflight results, only when they belong to the current selection. */
-const currentIssues = () => (S.issues && S.issuesKey === selectionKey() ? S.issues : null);
+const currentIssues = () => (S.issues && S.issuesKey === checkKey() ? S.issues : null);
+const confirmationKey = () => JSON.stringify([S.settings, S.selectionRevision, S.order, currentIssues()]);
 
 // ---------- print profiles (bundles of colour + output settings) ----------
 
@@ -787,32 +820,14 @@ function profileName(id = S.settings.profileId) {
   return BUILTIN_PROFILES.find((p) => p.id === id)?.name || '';
 }
 const profileDirty = () => !!S.settings.profileId && JSON.stringify(pick(S.settings, PROFILE_KEYS)) !== JSON.stringify(S.settings.profileBase || {});
-function profileSummary() {
-  const s = S.settings;
-  const parts: string[] = [];
-  if (s.mode === 'cmyk') parts.push(currentProfile()?.name || '未选 ICC');
-  else parts.push(s.mode === 'rgb' ? 'RGB' : '灰度');
-  if (s.mode !== 'rgb') parts.push(({ x4: 'PDF/X-4', x1a: 'PDF/X-1a', x3: 'PDF/X-3', none: '普通 PDF' } as Record<string, string>)[s.pdfx]);
-  if (s.mode === 'cmyk' && s.tacLimit) parts.push(`总墨量 ${s.tacLimit}%`);
-  return parts.map((x) => tr(x)).join(' · ');
-}
 
 // ---------- header / footer ----------
 
 function viewHead() {
-  if (S.route === 'welcome') return `<span class="kicker" style="font-weight:600;color:var(--fg)" data-notr>Inkpaper 纸墨</span>`;
-  const frames = S.frames;
-  const prepared = frames.length > 0 && frames.every((f) => f.meta);
-  const is = currentIssues();
-  const err = is?.filter((i) => i.level === 'error').length || 0;
-  const warn = is?.filter((i) => i.level === 'warning').length || 0;
-  const step = (id: Route, n: string, label: string, badge = '') =>
-    `<button class="step ${S.route === id ? 'on' : ''} ${badge === 'done' && S.route !== id ? 'done' : ''}" data-act="route" data-v="${id}">${
-      badge === 'done' && S.route !== id ? `<span class="n">${IC.check}</span>` : badge && badge !== 'done' && S.route !== id ? badge : `<span class="n">${n}</span>`
-    }<span>${label}</span></button>`;
-  const checkBadge = is ? (err ? `<span class="n err num">${err}</span>` : warn ? `<span class="n warn num">${warn}</span>` : 'done') : '';
-  return `<div class="steps">${step('prepare', '1', '准备', prepared ? 'done' : '')}${step('check', '2', '检查', checkBadge)}${step('export', '3', '导出')}</div>
-  <button class="btn small ${S.sheet === 'tools' ? 'primary' : ''}" data-act="sheet" data-v="${S.sheet === 'tools' ? '' : 'tools'}">${IC.grid}<span>工具箱</span></button>`;
+  const step = (id: Route, n: string, label: string) =>
+    `<button class="step ${S.route === id ? 'on' : ''}" data-act="route" data-v="${id}" ${S.route === id ? 'aria-current="page"' : ''}><span class="n">${n}</span><span>${label}</span></button>`;
+  return `${S.route === 'welcome' ? '<span class="kicker" style="font-weight:600;color:var(--fg)" data-notr>Inkpaper 纸墨</span>' : `<nav class="steps" aria-label="${tr('插件工作区')}">${step('prepare', '1', '准备')}${step('check', '2', '检查')}${step('export', '3', '导出')}</nav>`}
+  <div class="header-actions">${S.route === 'welcome' ? '' : `<button class="btn small utility ${S.sheet === 'tools' ? 'primary' : ''}" data-act="sheet" data-root="1" data-v="${S.sheet === 'tools' ? '' : 'tools'}" title="画布工具" aria-label="${tr('画布工具')}">${IC.grid}<span class="utility-label">画布工具</span></button>`}<button class="btn small utility icon-only ${['settings', 'resources', 'transfer'].includes(S.sheet) || S.sheetStack.includes('settings') ? 'primary' : ''}" data-act="sheet" data-root="1" data-v="${S.sheet === 'settings' ? '' : 'settings'}" title="设置" aria-label="${tr('设置')}">${IC.gear}</button></div>`;
 }
 
 function impSheets(n: number): number {
@@ -853,39 +868,44 @@ function exportLabel() {
 function readiness(): [string, string, string] {
   // [dot class, text, link]
   if (!S.frames.length) return ['', '在画布上选择要导出的画板', ''];
-  if (S.settings.mode === 'cmyk' && !currentProfile()) return ['warn', '还没有选择 ICC 配置文件，颜色会用近似算法换算', '去选择'];
   const is = currentIssues();
-  if (!is) return ['', '还没检查，建议先检查一遍', '检查'];
+  if (S.pendingIssuesKey === checkKey()) return ['', '正在检查…', ''];
+  if (!is) return ['', S.issues ? '设置或选择已改变，请重新检查' : '还没有检查印刷质量', '检查'];
   const err = is.filter((i) => i.level === 'error').length;
   const warn = is.filter((i) => i.level === 'warning').length;
-  if (err) return ['err', `${err} 个问题建议先处理`, '查看'];
-  if (warn) return ['warn', `${warn} 个提醒不影响印刷，可以直接导出`, '查看'];
-  return ['ok', '检查通过，可以导出', ''];
+  if (err || warn) return [err ? 'err' : 'warn', `${err + warn} 项风险需要处理或确认`, '查看'];
+  return ['ok', '检查完成，未发现已知风险', '查看'];
+}
+
+function viewReadiness() {
+  const [cls, text, link] = readiness();
+  const is = currentIssues();
+  const count = is?.filter((i) => i.level === 'warning' || i.level === 'error').length || 0;
+  const label = count ? `${count} 项风险` : cls === 'ok' ? '未发现已知风险' : S.pendingIssuesKey === checkKey() ? '正在检查…' : S.issues ? '需重新检查' : '未检查';
+  return `<section class="quality compact ${cls}" title="${esc(tr(text))}"><span class="dot ${cls}" aria-hidden="true"></span><span class="grow">${label}</span>${link ? `<button class="link" data-act="route" data-v="check">${link === '检查' ? '检查' : '查看'} ${IC.right}</button>` : ''}</section>`;
 }
 
 function renderFoot() {
-  const meta = (left: string) => `<div class="foot-meta"><span class="muted xs grow">${left}</span>${langSelect()}</div>`;
   let html = '';
-  if (S.route === 'welcome') {
-    html = `<button class="btn primary big" data-act="onboard">开始</button>${meta('先跳过也可以，颜色会用近似算法换算')}`;
-  } else if (S.sheet === 'imposition') {
+  if (S.sheet === 'imposition') {
     html = `<div style="display:flex;gap:8px"><button class="btn" style="height:40px" data-act="imp-cancel">取消</button><button class="btn primary big" style="flex:1" data-act="sheet" data-v="">${impLabel(S.settings.imp.kind)[0] === '不拼版' ? '完成' : `使用${impLabel(S.settings.imp.kind)[0]}`}</button></div>`;
-  } else if (S.sheet === 'tools') {
-    html = meta('工具作用于画布上选中的图层');
+  } else if (S.sheet) {
+    html = '';
+  } else if (S.route === 'welcome') {
+    html = `<button class="btn primary big" data-act="onboard">开始</button>`;
   } else if (S.route === 'prepare') {
     const d = S.settings.doc;
     const kind = DOC_KINDS.find((k) => k.id === d.kind);
     const pp = PAPER_PRESETS.find((p) => p.id === d.preset);
     const sizeName = pp ? tr(pp.name).replace(/（.*?）|\(.*?\)/g, '').trim() : `${toUnit(d.w)}×${toUnit(d.h)} ${S.settings.unit}`;
-    html = `<button class="btn primary big" data-act="create-doc"><span>${d.pages > 1 ? `创建 ${d.pages} 页${kind?.noun || '印刷文档'}` : `创建${kind?.noun || '印刷文档'}`}</span><span class="sub" data-notr>· ${esc(sizeName)} · ${tr('出血')} ${d.sidesOn ? '…' : toUnit(d.bleed) + ' ' + S.settings.unit}</span></button>${meta('创建后在画布上设计，做好了选中它们来导出')}`;
+    html = `<button class="btn primary big" data-act="create-doc"><span>${d.pages > 1 ? `创建 ${d.pages} 页${kind?.noun || '印刷文档'}` : `创建${kind?.noun || '印刷文档'}`}</span><span class="sub" data-notr>· ${esc(sizeName)} · ${tr('出血')} ${d.sidesOn ? '…' : toUnit(d.bleed) + ' ' + S.settings.unit}</span></button>`;
   } else if (S.route === 'check') {
-    html = `<button class="btn primary big" data-act="route" data-v="export"><span>下一步：导出</span>${IC.arrow}</button>${meta('改完设计后，点「重新检查」更新结果')}`;
+    html = `<button class="btn primary big" data-act="route" data-v="export"><span>返回导出</span>${IC.arrow}</button>`;
   } else {
-    const [cls, text, link] = readiness();
     const lab = exportLabel();
-    html = `<div class="status"><span class="dot ${cls}"></span><span class="grow">${text}</span>${link ? `<button class="link" data-act="${link === '去选择' ? 'sheet' : 'route'}" data-v="${link === '去选择' ? 'profile' : 'check'}">${link}</button>` : ''}</div>
-    <button class="btn primary big" data-act="export" ${!S.frames.length || S.busy ? 'disabled' : ''}><span>${lab.main}</span>${lab.sub ? `<span class="sub">· <span>${lab.sub}</span></span>` : ''}</button>${meta('全部在本机处理，不上传设计稿')}`;
+    html = `<button class="btn primary big" data-act="export" ${!S.frames.length || S.busy ? 'disabled' : ''}><span>${lab.main}</span>${lab.sub ? `<span class="sub">· <span>${lab.sub}</span></span>` : ''}</button>`;
   }
+  $('foot').hidden = !html;
   $('foot').innerHTML = html;
   translateDom($('foot'));
 }
@@ -893,11 +913,14 @@ function renderFoot() {
 // ---------- routing of the main area ----------
 
 function viewMain(): string {
-  if (S.route === 'welcome') return viewWelcome();
+  if (S.sheet === 'settings') return viewSettings();
+  if (S.sheet === 'resources') return viewColorResources();
+  if (S.sheet === 'transfer') return `${sheetHead('预设导入 / 导出')}<div class="settings-group"><p class="hint">包含印刷方案和颜色映射，不含 ICC 和色板。</p><div class="line"><button class="btn" data-act="import-json">导入 JSON</button><button class="btn" data-act="export-json">导出 JSON</button></div></div>`;
   if (S.sheet === 'tools') return viewTools();
   if (S.sheet === 'more') return viewMore();
   if (S.sheet === 'imposition') return viewImposition();
   if (S.sheet === 'profile') return viewProfile();
+  if (S.route === 'welcome') return viewWelcome();
   if (S.route === 'prepare') return viewPrepare();
   if (S.route === 'check') return viewCheck();
   return viewExport();
@@ -906,28 +929,38 @@ function viewMain(): string {
 const noSelection = (what: string) =>
   `<div class="empty"><span>${what}</span><button class="btn" data-act="route" data-v="prepare">${IC.plus}<span>新建印刷画板</span></button></div>`;
 
+function viewSettings() {
+  return `${sheetHead('设置')}
+    <section class="settings-group"><h2>偏好</h2>
+      <div class="row"><label class="lbl" for="lang">界面语言</label>${langSelect()}</div>
+      <div class="row"><label class="lbl" for="setting-unit">尺寸单位</label>${sel('unit', [['mm', 'mm'], ['cm', 'cm'], ['in', 'in'], ['pt', 'pt']])}</div>
+      <div class="row"><span class="lbl">外观</span><span class="muted">跟随 Figma</span></div>
+    </section>
+    <section class="settings-group"><h2>资源管理</h2>
+      <button class="settings-link" data-act="sheet" data-v="profile"><span>印刷方案与 ICC</span>${IC.right}</button>
+      <button class="settings-link" data-act="sheet" data-v="resources"><span>色板与颜色映射</span>${IC.right}</button>
+      <button class="settings-link" data-act="sheet" data-v="transfer"><span>预设导入 / 导出</span>${IC.right}</button>
+    </section>
+    <details class="settings-help"><summary>关于与帮助</summary><p class="hint">Inkpaper 纸墨 · 全部在本机处理，不上传设计稿</p><a href="https://github.com/onevalar/figma-inkpaper#readme" target="_blank" rel="noopener noreferrer">使用说明</a></details>`;
+}
+
 // ---------- 01 welcome ----------
 
 function viewWelcome() {
-  const steps: [string, string][] = [
-    ['准备', '新建带出血的印刷画板，或给已有设计加出血'],
-    ['检查', '自动找出会印坏的地方，大多一键修好'],
-    ['导出', '按印刷方案输出 CMYK PDF，裁切线、拼版都能加'],
-  ];
   return `<div style="display:flex;flex-direction:column;gap:12px;padding-top:14px">
     <svg width="40" height="40" viewBox="0 0 44 44"><circle cx="22" cy="22" r="12" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="22" cy="22" r="6" fill="var(--accent)"/><path d="M22 2v40M2 22h40" stroke="currentColor" stroke-width="1.5"/></svg>
     <h1 style="font-size:24px">把屏幕上的设计，<br>变成纸上的墨。</h1>
-    <p class="hint" style="font-size:13px">三步做出能直接交给印刷厂的文件。全部在本机完成，设计稿不会上传。</p>
+    <p class="hint">准备 → 检查 → 导出</p>
   </div>
-  <div class="divided rule" style="border-bottom:1px solid var(--line)">${steps.map(([t, d], i) => `<div style="display:flex;gap:14px;padding:10px 0"><span style="width:16px;font-weight:700;color:var(--accent)">${i + 1}</span><div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:600">${t}</span><span class="muted sm">${d}</span></div></div>`).join('')}</div>
   <div class="section" style="gap:8px">
-    <div><b style="font-weight:600">开始前：导入印刷厂的颜色配置</b> <span class="muted xs">只需一次</span></div>
+    <h2>导入印刷厂的 ICC</h2>
     ${
       S.profiles.length
         ? `<div class="well" style="display:flex;align-items:center;gap:8px">${IC.okCircle}<span class="grow" data-notr>${esc(S.profiles.map((p) => p.name).join('、'))}</span><button class="link" data-act="import-icc">再导入</button></div>`
-        : `<div class="drop" data-act="import-icc" id="icc-drop">${IC.upload}<div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:500">拖入 .icc 文件，或点这里选择</span><span class="muted xs">国内胶印多用 Japan Color 2001 Coated · 欧洲 FOGRA39 · 北美 GRACoL</span></div></div>`
+        : `<button class="drop" data-act="import-icc" id="icc-drop">${IC.upload}<span>拖入 .icc 文件，或点这里选择</span></button>`
     }
-    <p class="hint xs"><span>不知道用哪个？问印刷厂要，或从官网免费下载：</span> <a href="https://www.adobe.com/support/downloads/iccprofiles/iccprofiles_mac.html" target="_blank" data-notr>Adobe</a> · <a href="https://www.eci.org/en/downloads" target="_blank" data-notr>ECI</a></p>
+    <p class="hint xs">先跳过也可以，颜色会用近似算法换算</p>
+    <details class="settings-help"><summary>ICC 获取帮助</summary><p class="hint xs"><span>不知道用哪个？问印刷厂要，或从官网免费下载：</span> <a href="https://www.adobe.com/support/downloads/iccprofiles/iccprofiles_mac.html" target="_blank" data-notr>Adobe</a> · <a href="https://www.eci.org/en/downloads" target="_blank" data-notr>ECI</a></p></details>
   </div>`;
 }
 
@@ -1018,24 +1051,15 @@ function bleedShortCard() {
     : '';
 }
 
-function moreSummary() {
-  const s = S.settings;
-  const p: string[] = [];
-  if (s.dielineMode !== 'off' || Object.keys(s.colorFinishing).length) p.push({ inline: '刀版随文件', separate: '刀版单独文件', both: '刀版两种都要' }[s.dielineFile]);
-  p.push(`图片${({ light: '轻度', balanced: '均衡', strong: '强力', custom: '自定义' } as Record<string, string>)[s.compression]}压缩`);
-  if (s.bookmarks) p.push('书签');
-  if (s.keepLinks && (s.pdfx === 'none' || s.mode === 'rgb')) p.push('超链接');
-  p.push(S.password && (s.pdfx === 'none' || s.mode === 'rgb') ? '已设密码' : '无密码');
-  if (s.alsoDigital) p.push('+屏幕版');
-  return p.map((x) => tr(x)).join(' · ');
-}
-
 function viewExport() {
   const s = S.settings;
   const frames = orderedFrames();
   if (!frames.length) return noSelection('在画布上选择要导出的画板、编组或分区');
   const isPdf = s.format === 'pdf';
-  const noBleed = frames.filter((f) => !f.meta).length;
+  const customized = !!S.password || [...MORE_KEYS, 'imp', 'regMarks', 'colorBars', 'author', 'subject', 'keywords'].some((k) => {
+    if (s.compression !== 'custom' && ['imageCompression', 'jpegQuality', 'maxPpi'].includes(k)) return false;
+    return JSON.stringify((s as any)[k]) !== JSON.stringify((DEFAULTS as any)[k]);
+  });
   const first = frames[0];
   const sz = frameSize(first);
   const same = frames.every((f) => {
@@ -1046,37 +1070,42 @@ function viewExport() {
   const sizeTxt = `${toUnit(sz.w)}×${toUnit(sz.h)} ${s.unit}`;
   const pname = preset ? tr(preset.name).replace(/（.*?）|\(.*?\)/g, '').trim() : '';
   const summary = !same ? '多种尺寸' : !preset ? sizeTxt : /\d×\d/.test(pname) ? `${pname} ${s.unit}` : `${pname} · ${sizeTxt}`;
-  const bleedNote = noBleed === frames.length ? '没有出血' : noBleed ? `${noBleed} 个没有出血` : `已含 ${first.meta!.bleed} mm 出血`;
   const imp = s.imp;
   const r = S.lastResult;
   return `
-  <div class="section" style="gap:10px">
-    <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:20px;font-weight:600" class="num">${frames.length} 页</span><span class="muted sm grow ell"><span data-notr>${esc(summary === '多种尺寸' ? tr(summary) : summary)} · </span><span>${bleedNote}</span></span><span class="muted xs">拖动排序</span></div>
-    <div class="strip">${frames
+  <section class="pages-summary">
+    <div class="pages-compact">${S.thumbs[first.id] ? `<img data-thumb="${esc(first.id)}" src="${S.thumbs[first.id]}" alt="">` : ''}<div class="grow pages-copy"><b class="num">${frames.length} 页待导出</b><span class="muted xs" data-notr>${esc(summary === '多种尺寸' ? tr(summary) : summary)}</span></div><button class="link" data-act="pages-open" aria-expanded="${S.pagesOpen}" aria-controls="export-pages">${S.pagesOpen ? '收起页面' : '查看与排序'} ${IC.chev}</button></div>
+    ${S.pagesOpen ? `<div id="export-pages"><p class="hint xs">拖动排序，也可用前移、后移按钮调整。</p><div class="strip">${frames
       .map(
-        (f, i) => `<div class="page" draggable="true" data-drag="${i}" data-act="select" data-v="${f.id}" title="${esc(f.name)}" data-notr><div class="pg">${S.thumbs[f.id] ? `<img data-thumb="${esc(f.id)}" src="${S.thumbs[f.id]}">` : `<span style="width:${Math.max(36, Math.min(110, (72 * frameSize(f).w) / frameSize(f).h))}px"></span>`}</div><span class="no num">${i + 1}</span></div>`,
+        (f, i) => `<div class="page" draggable="true" data-drag="${i}"><button class="page-select" data-act="select" data-v="${f.id}" title="${esc(f.name)}" data-notr><span class="pg">${S.thumbs[f.id] ? `<img data-thumb="${esc(f.id)}" src="${S.thumbs[f.id]}" alt="">` : ''}</span><span class="no num">${i + 1} · ${esc(f.name)}</span></button><div class="page-order"><button data-act="page-move" data-v="${f.id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} title="${tr('前移')}">‹</button><button data-act="page-move" data-v="${f.id}" data-dir="1" ${i === frames.length - 1 ? 'disabled' : ''} title="${tr('后移')}">›</button></div></div>`,
       )
-      .join('')}</div>
-  </div>
-  ${noBleed ? `<label class="chk" style="margin-top:-8px">${`<input type="checkbox" data-bind="autoBleed" data-t="bool" ${s.autoBleed ? 'checked' : ''}>`}<span class="sm">没有出血的 ${noBleed} 个画板：自动把贴边元素延伸到出血区 <span class="muted">（只影响导出，不改设计稿）</span></span></label>` : ''}
-  <button class="profile" data-act="sheet" data-v="profile">${INKS}<span class="grow" style="display:flex;flex-direction:column;gap:1px"><span class="kicker">印刷方案</span><span class="name">${esc(tr(profileName() || '自定义'))}${profileDirty() ? ` <span class="muted xs" style="font-weight:400">${tr('（已修改）')}</span>` : ''}</span><span class="muted xs ell" data-notr>${esc(profileSummary())}</span></span><span class="sm" style="font-weight:500">更换</span>${IC.right}</button>
-  <div class="section">
-    <div class="row"><span class="lbl">格式</span>${seg('format', [['pdf', 'PDF'], ['tiff', 'TIFF'], ['jpeg', 'JPEG'], ['png', 'PNG']])}</div>
-    ${!isPdf ? `<div class="row"><span class="lbl">分辨率</span>${sel('rasterDpi', [[150, '150 dpi'], [300, '300 dpi（标准印刷）'], [600, '600 dpi（细线、条码）'], [1200, '1200 dpi']], 'num')}</div><p class="hint xs" style="padding-left:74px">${s.format === 'png' ? 'PNG 只能是 RGB，适合数码快印。' : `${s.mode === 'cmyk' ? 'CMYK' : s.mode === 'gray' ? '灰度' : 'RGB'} 位图，内嵌 ICC 和 DPI，文字和矢量会变成像素。`}</p>` : ''}
-    <div class="row"><span class="lbl">出血</span>${
+      .join('')}</div></div>` : ''}
+  </section>
+  ${viewReadiness()}
+  <button class="profile" data-act="sheet" data-v="profile">${INKS}<span class="grow profile-copy"><span class="kicker">印刷方案</span><span class="name">${esc(tr(profileName() || '自定义'))}${profileDirty() ? ` <span class="muted xs" style="font-weight:400">${tr('（已修改）')}</span>` : ''}</span><span class="hint xs ${s.mode === 'cmyk' && !currentProfile() ? 'tag-warn' : ''}" data-notr>${esc(tr(s.mode === 'cmyk' ? currentProfile()?.name || '未选择 ICC，颜色仅能近似换算。' : s.mode === 'rgb' ? 'RGB' : '灰度'))}</span></span>${IC.right}</button>
+  <section class="section output-settings">
+    <h2>输出设置</h2>
+    <div class="row"><span class="lbl" id="format-label">格式</span><div role="group" aria-labelledby="format-label">${seg('format', [['pdf', 'PDF'], ['tiff', 'TIFF'], ['jpeg', 'JPEG'], ['png', 'PNG']])}</div></div>
+    ${!isPdf ? `<div class="row"><label class="lbl" for="setting-rasterDpi">分辨率</label>${sel('rasterDpi', [[150, '150 dpi'], [300, '300 dpi（标准印刷）'], [600, '600 dpi（细线、条码）'], [1200, '1200 dpi']], 'num')}</div><p class="hint xs">${s.format === 'png' ? 'PNG 只能是 RGB，适合数码快印。' : `${s.mode === 'cmyk' ? 'CMYK' : s.mode === 'gray' ? '灰度' : 'RGB'} 位图，内嵌 ICC 和 DPI，文字和矢量会变成像素。`}</p>` : ''}
+    <div class="row"><label class="lbl" ${s.bleedSidesOn ? '' : 'for="setting-bleedMm"'}>出血</label>${
       s.bleedSidesOn
         ? `<button class="link" data-act="sheet" data-v="more">${s.bleedSides.t}/${s.bleedSides.r}/${s.bleedSides.b}/${s.bleedSides.l} mm</button>`
         : `${num('bleedMm', { min: 0, max: 20, step: 0.5, unit: true, w: 56 })}${U()}`
-    }${isPdf ? `<span style="display:flex;gap:6px;flex-wrap:wrap">${markChip('cropMarks', '裁切线')}${markChip('regMarks', '套准')}${s.mode !== 'rgb' ? markChip('colorBars', '色标条') : ''}</span>` : ''}</div>
+    }${isPdf ? chk('cropMarks', '裁切线') : ''}</div>
     ${bleedShortCard()}
-    ${
-      isPdf
-        ? `<div class="row"><span class="lbl">拼版</span><button class="btn grow" style="justify-content:flex-start;height:36px" data-act="sheet" data-v="imposition"><span style="display:inline-flex;transform:scale(.6);transform-origin:left center;width:${imp.kind === 'duplex' ? 44 : imp.kind === 'none' ? 18 : 32}px">${IMP_ART[imp.kind]}</span><span style="font-weight:500">${impLabel(imp.kind)[0]}</span><span class="muted xs grow" style="text-align:right">${impLabel(imp.kind)[1]}</span>${IC.chev}</button></div>`
-        : ''
-    }
-    <div class="row"><span class="lbl">文件名</span><span data-notr style="flex:1;display:flex">${txt('title', S.fileName || '印刷文件')}</span><span class="muted xs">${isPdf ? (s.output === 'merged' ? '.pdf · 合并为 1 个文件' : '.pdf · 每页 1 个文件') : s.output === 'merged' && frames.length > 1 ? '.zip' : '.' + ({ tiff: 'tif', jpeg: 'jpg', png: 'png' } as Record<string, string>)[s.format]}</span></div>
-  </div>
-  <button class="disclose" data-act="sheet" data-v="more" style="margin-top:-6px"><span class="grow" style="display:flex;flex-direction:column;gap:2px"><span class="t">更多设置</span><span class="muted xs ell" data-notr>${esc(moreSummary())}</span></span>${IC.right}</button>
+    <div class="row"><label class="lbl" for="setting-title">文件名</label><span data-notr class="grow" style="display:flex">${txt('title', S.fileName || '印刷文件')}</span><span class="muted xs">${isPdf ? '.pdf' : '.' + ({ tiff: 'tif', jpeg: 'jpg', png: 'png' } as Record<string, string>)[s.format]}</span></div>
+  </section>
+  <section class="advanced">
+    <button class="disclose ${s.advancedOpen ? 'open' : ''}" data-act="more-open" aria-expanded="${s.advancedOpen}" aria-controls="export-advanced"><span class="grow t">专业设置</span>${customized ? '<span class="tag-accent xs">已自定义</span>' : ''}${IC.chev}</button>
+    ${s.advancedOpen ? `<div id="export-advanced" class="section output-settings">
+      ${isPdf ? `<div class="row"><span class="lbl">拼版</span><button class="btn grow" data-act="sheet" data-v="imposition"><span class="grow">${impLabel(imp.kind)[0]}</span>${IC.right}</button></div>
+      <div class="row"><label class="lbl" for="setting-textOutline">文字</label>${sel('textOutline', [['perNode', '按图层设置'], ['none', '全部保留'], ['all', '全部转曲']])}</div>
+      <div class="row"><label class="lbl" for="setting-output">文件输出</label>${sel('output', [['merged', '合并为一个 PDF'], ['separate', '每页单独一个文件']])}</div>
+      <div class="row"><span class="lbl">印刷标记</span>${chk('regMarks', '套准')}${s.mode !== 'rgb' ? chk('colorBars', '色标条') : ''}</div>` : ''}
+      <div class="row"><label class="lbl" for="setting-compression">图片压缩</label>${sel('compression', [['light', '轻度'], ['balanced', '均衡'], ['strong', '强力'], ['custom', '自定义']])}</div>
+      <button class="btn" data-act="sheet" data-v="more">全部专业设置 ${IC.right}</button>
+    </div>` : ''}
+  </section>
   ${
     r
       ? `${disclose('result', S.resultOpen, '上次导出结果', `共 ${r.files.length} 个文件`)}${
@@ -1101,11 +1130,10 @@ function viewExport() {
       : ''
   }`;
 }
-const markChip = (path: string, label: string) => `<button class="chip ${getPath(path) ? 'on' : ''}" data-act="tg" data-path="${path}">${getPath(path) ? IC.check : ''}<span>${label}</span></button>`;
 
 // ---------- 04 more settings ----------
 
-const MORE_KEYS = ['bleedSidesOn', 'bleedSides', 'trimLine', 'markWeight', 'dielineMode', 'dielineNames', 'dielineFile', 'spotPolicy', 'keepSpots', 'textOutline', 'compression', 'imageCompression', 'jpegQuality', 'maxPpi', 'bookmarks', 'keepLinks', 'alsoDigital', 'output', 'scalePct'] as const;
+const MORE_KEYS = ['bleedSidesOn', 'bleedSides', 'autoBleed', 'trimLine', 'markWeight', 'dielineMode', 'dielineNames', 'dielineFile', 'spotPolicy', 'keepSpots', 'textOutline', 'compression', 'imageCompression', 'jpegQuality', 'maxPpi', 'bookmarks', 'keepLinks', 'alsoDigital', 'output', 'scalePct'] as const;
 
 function viewMore() {
   const s = S.settings;
@@ -1113,12 +1141,13 @@ function viewMore() {
   const spots = Object.values(s.overrides).filter((o) => o.spot);
   const fin = Object.entries(s.colorFinishing);
   const sect = (title: string, body: string) => `<div class="section" style="padding-bottom:6px;border-bottom:1px solid var(--line)"><span class="kicker" style="padding:10px 0 2px">${title}</span>${body}</div>`;
-  return `${sheetHead('更多设置', `<button class="link muted" data-act="more-reset">恢复默认</button>`)}
+  return `${sheetHead('专业设置', `<button class="link muted" data-act="more-reset">恢复默认</button>`)}
   <div style="display:flex;flex-direction:column;margin-top:-18px">
   ${sect(
     '出血与标记',
     `${tline('bleedSidesOn', '四边出血分别设置')}
     ${s.bleedSidesOn ? `<div style="padding:2px 0 8px">${sides4('bleedSides')}</div>` : ''}
+    ${chk('autoBleed', '自动延伸未设出血画板的贴边元素', '（不修改设计稿）')}
     ${isPdf ? tline('trimLine', '成品框线', '校对用，裁切位置画一圈细线') : ''}
     ${isPdf ? `<div class="line"><span class="l">标记线宽</span>${num('markWeight', { min: 0.1, max: 1, step: 0.05, w: 64 })}<span class="unit">pt</span></div>` : ''}`,
   )}
@@ -1128,7 +1157,7 @@ function viewMore() {
           '刀版与专色',
           `<div class="line"><span class="l">识别刀线和工艺</span>${seg('dielineMode', [['off', '关闭'], ['auto', '按图层名'], ['manual', '手动指定']])}</div>
     ${s.dielineMode === 'manual' ? `<div class="line">${txt('dielineNames', '专色名，例如 CutContour, Kiss Cut')}</div>` : ''}
-    ${s.dielineMode === 'auto' ? `<p class="hint xs" style="padding-bottom:4px">图层名以 Cut / 刀线、Fold / 折线、压痕、打孔、光油、白墨、烫金 等开头的图层，会各自输出成专色版并叠印（完整规则见工具箱）。</p>` : ''}
+    <details class="settings-help"><summary>刀线与工艺识别规则</summary><p class="hint xs">图层名以下面关键词开头的图层，会单独输出成对应的专色版，并自动叠印。刀线、折线、压痕、打孔会输出成真正的单线路径。也可以在「检查 → 颜色」里把某个颜色指定为刀线或工艺。</p><div class="divided">${DIELINE_KEYWORDS.map((d) => `<div class="line" style="min-height:28px"><span class="mono" style="width:110px;flex:none">${d.spot}</span><span class="muted xs ell" data-notr>${d.key.source.replace(/^\^\\\[\?\\s\*\(/, '').replace(/\)$/, '').replace(/\|/g, ' / ').replace(/\.\?/g, ' ')}</span></div>`).join('')}</div></details>
     ${fin.length ? `<p class="hint xs" style="padding-bottom:4px">按颜色指定：<span data-notr>${fin.map(([hex, sp]) => `${hex} → ${esc(sp)}`).join('，')}</span></p>` : ''}
     ${isPdf ? `<div class="line"><span class="l">刀版输出</span>${seg('dielineFile', [['inline', '随文件'], ['separate', '单独文件'], ['both', '两种都要']])}</div>` : ''}
     <div class="line"><span class="l">专色</span>${seg('spotPolicy', [['preserve', '保留专色'], ['flatten', '转为四色'], ['keepListed', '只保留指定']])}</div>
@@ -1281,49 +1310,52 @@ function viewCheck() {
     ['text', `文字${S.texts ? ` <span class="muted num">${S.texts.length}</span>` : ''}`],
   ];
   const body = { issues: viewIssues, preview: viewPreview, colors: viewColors, text: viewText }[S.checkTab]();
-  return `<div class="seg full" style="margin-top:2px">${tabs.map(([v, l]) => `<button data-act="ctab" data-v="${v}" class="${S.checkTab === v ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
+  return `<div class="view-heading"><h1>检查印刷质量</h1><p class="hint">先了解影响，再决定如何处理。</p></div><div class="seg full" role="group" aria-label="${tr('检查内容')}">${tabs.map(([v, l]) => `<button data-act="ctab" data-v="${v}" aria-pressed="${S.checkTab === v}" class="${S.checkTab === v ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
 }
 
 function viewIssues() {
   const s = S.settings;
   const is = currentIssues();
-  if (!is) return `<div class="empty">正在检查…</div>`;
+  if (!is) return `<section class="quality"><div class="grow"><h2>${S.pendingIssuesKey === checkKey() ? '正在检查…' : S.checkError ? '检查未完成，请重试' : '需要更新检查结果'}</h2><p class="hint">${S.checkError ? esc(S.checkError) : '旧结果不再作为当前导出的依据。'}</p></div>${S.pendingIssuesKey === checkKey() ? '' : '<button class="btn" data-act="preflight">重新检查</button>'}</section>${viewCheckStandards()}`;
   const list = is.filter((i) => i.level !== 'pass');
   const count = (l: string) => list.filter((i) => i.level === l).length;
   const err = count('error'),
     warn = count('warning'),
     info = count('info');
-  const score = Math.max(0, 100 - err * 15 - warn * 5 - info);
-  const cats = Object.keys(CAT_NAMES).filter((c) => c !== 'annotation');
-  const failed = new Set(list.filter((i) => i.level !== 'info').map((i) => i.cat));
-  const passed = cats.filter((c) => !failed.has(c as any));
   const fixable = list.filter((i) => i.fix && (i.fix.startsWith('k100:') || i.fix === 'removeWhiteOverprint' || (i.fix === 'autoBleed' && !s.autoBleed)));
   const order = { error: 0, warning: 1, info: 2, pass: 3 } as Record<string, number>;
   return `
-  <div class="score"><span class="big ${err ? 'err' : warn ? 'warn' : ''}">${score}</span><span class="grow" style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">${err ? '建议修改后再印' : '可以印刷'}</span><span class="muted sm">${err} 个错误 · ${warn} 个提醒 · ${info} 个提示</span></span>${fixable.length ? `<button class="btn primary" data-act="fix-all">全部修复</button>` : `<button class="btn small" data-act="preflight">重新检查</button>`}</div>
+  <div class="section-title"><div class="grow"><h2>${err || warn ? `${err + warn} 项风险需要处理或确认` : '检查完成，未发现已知风险'}</h2><p class="hint xs">${err} 个错误 · ${warn} 个提醒 · ${info} 个提示</p></div><button class="btn" data-act="preflight">重新检查</button></div>
+  ${fixable.length ? `<div><button class="btn" data-act="fix-all">全部修复</button><span class="muted xs"> · 仅调整导出设置</span></div>` : ''}
   ${
     list.length
-      ? `<div class="divided rule" style="border-bottom:1px solid var(--line)">${list
+      ? `<div class="issue-list">${list
           .sort((a, b) => order[a.level] - order[b.level])
           .map(
-            (i) => `<div class="issue"><span class="dot ${i.level === 'error' ? 'err' : i.level === 'warning' ? 'warn' : 'info'}"></span><span class="body"><span class="msg">${esc(i.msg)}</span>${i.frame || i.nodeId ? `<span class="where" ${i.nodeId ? `data-act="select" data-v="${i.nodeId}"` : ''}>${i.frame ? `<span data-notr>${esc(i.frame)}</span>` : ''}${i.frame && i.nodeId ? ' · ' : ''}${i.nodeId ? '<span>在画布上定位</span>' : ''}</span>` : ''}</span><span class="act">${fixButton(i)}</span></div>`,
+            (i) => `<article class="issue-card"><div class="section-title"><h2>${CAT_NAMES[i.cat] || '提示'}</h2><span class="issue-level ${i.level}">${{ error: '错误', warning: '风险', info: '提示', pass: '通过' }[i.level]}</span></div><p class="msg">${esc(i.msg)}</p>${i.frame ? `<p class="hint xs" data-notr>${esc(i.frame)}</p>` : ''}<div class="issue-actions">${fixButton(i)}${i.nodeId ? `<button class="link" data-act="select" data-v="${i.nodeId}">在画布上定位</button>` : ''}</div>${i.fix ? `<p class="hint xs">${i.fix === 'upscale' ? '替换或放大图片会修改原稿；放大不会补回缺失的细节。' : '仅调整导出设置，不修改设计稿。'}</p>` : ''}</article>`,
           )
           .join('')}</div>`
-      : `<div class="well" style="display:flex;align-items:center;gap:8px">${IC.okCircle}<span>没有发现会影响印刷的问题</span></div>`
+      : `<div class="quality ok"><span class="dot ok"></span><p class="hint">检查有范围，送印前请核对印刷厂要求。</p></div>`
   }
-  ${disclose('pass-open', S.passOpen, `已通过 ${passed.length} 项`, passed.map((c) => tr(CAT_NAMES[c])).join(' · '))}
+  <p class="hint xs">检查是最近一次快照，改稿后请重新检查。</p>
+  ${disclose('pass-open', S.passOpen, '检查范围与图片', '出血、版面、图片、文字及部分颜色问题')}
   ${
     S.passOpen && S.images.length
       ? `<div class="divided" style="margin-top:-14px">${S.images.map((im) => `<div class="line" data-act="select" data-v="${im.id}" style="cursor:pointer"><span class="l ell" data-notr>${esc(im.name)}</span><span class="muted mono">${im.px}</span><span class="${im.ppi >= s.minPpi ? 'tag-ok' : 'tag-warn'} sm num" style="width:64px;text-align:right">${im.ppi} ppi</span></div>`).join('')}</div>`
       : ''
   }
-  <div class="well" style="display:flex;flex-direction:column;gap:6px">
+  ${viewCheckStandards()}`;
+}
+
+function viewCheckStandards() {
+  const s = S.settings;
+  return `<div class="well" style="display:flex;flex-direction:column;gap:6px">
     <div style="display:flex;align-items:center;gap:8px"><span class="muted xs grow">检查标准：图片 ≥ ${s.minPpi} ppi · 线条 ≥ ${s.minStrokePt} pt · 字号 ≥ ${s.minTextPt} pt</span><button class="link" data-act="std-open">${S.stdOpen ? '收起' : '修改'}</button></div>
     ${
       S.stdOpen
-        ? `<div class="line"><span class="l sm">最低分辨率</span>${num('minPpi', { min: 72, max: 600, step: 10 })}<span class="unit">ppi</span></div>
-    <div class="line"><span class="l sm">最细线条</span>${num('minStrokePt', { min: 0, max: 2, step: 0.05 })}<span class="unit">pt</span></div>
-    <div class="line"><span class="l sm">最小字号</span>${num('minTextPt', { min: 3, max: 12, step: 0.5 })}<span class="unit">pt</span></div>
+        ? `<div class="line"><label class="l sm" for="setting-minPpi">最低分辨率</label>${num('minPpi', { min: 72, max: 600, step: 10 })}<span class="unit">ppi</span></div>
+    <div class="line"><label class="l sm" for="setting-minStrokePt">最细线条</label>${num('minStrokePt', { min: 0, max: 2, step: 0.05 })}<span class="unit">pt</span></div>
+    <div class="line"><label class="l sm" for="setting-minTextPt">最小字号</label>${num('minTextPt', { min: 3, max: 12, step: 0.5 })}<span class="unit">pt</span></div>
     ${chk('blockLowPpi', '有图片低于最低分辨率时，禁止导出')}
     <div><button class="btn small" data-act="preflight">按新标准重新检查</button></div>`
         : ''
@@ -1333,6 +1365,7 @@ function viewIssues() {
 
 function fixButton(i: Issue) {
   if (!i.fix) return '';
+  if (i.fix === 'icc') return `<button class="btn" data-act="sheet" data-v="profile">选择颜色配置</button>`;
   if (i.fix.startsWith('k100:')) return `<button class="btn small" data-act="fix-k100" data-v="${i.fix.slice(5)}">改为单色黑</button>`;
   if (i.fix === 'upscale' && i.nodeId) return `<button class="btn small" data-act="upscale" data-v="${i.nodeId}">放大 2 倍</button><button class="link muted" data-act="replace-image" data-v="${i.nodeId}">替换图片</button>`;
   if (i.fix === 'autoBleed') return S.settings.autoBleed ? `<span class="muted xs">导出时自动延伸</span>` : `<button class="btn small" data-act="tg" data-path="autoBleed">导出时自动加出血</button>`;
@@ -1344,7 +1377,7 @@ function colorIssues(): Issue[] {
   const out: Issue[] = [];
   const s = S.settings;
   if (s.mode !== 'cmyk') return out;
-  if (!currentProfile()) out.push({ level: 'warning', cat: 'color', msg: '没有选择 ICC 配置文件，将用简单公式换算 CMYK，颜色可能偏差较大。请在“印刷方案”里导入。' });
+  if (!currentProfile()) out.push({ level: 'warning', cat: 'color', msg: '没有选择 ICC 配置文件，将用简单公式换算 CMYK，颜色可能偏差较大。请在“印刷方案”里导入。', fix: 'icc' });
   for (const c of S.colors || []) {
     const { c: cm, kind } = cmykFor(c.hex);
     if (kind === 'finish') continue;
@@ -1401,8 +1434,6 @@ function viewColors() {
   const s = S.settings;
   if (s.mode !== 'cmyk') return `<div class="empty"><span>当前印刷方案是 ${s.mode === 'rgb' ? 'RGB' : '灰度'}，颜色映射、专色和总墨量只在 CMYK 下生效。</span><button class="btn" data-act="sheet" data-v="profile">更换印刷方案</button></div>`;
   if (!S.colors) return `<div class="empty">正在扫描颜色…</div>`;
-  const cur = allMaps().find((m) => m.name === s.activeMap);
-  const dirty = s.activeMap && JSON.stringify(cur?.overrides || {}) !== JSON.stringify(s.overrides);
   const rows = S.colors
     .map((c) => {
       const { c: cm, kind } = cmykFor(c.hex);
@@ -1426,17 +1457,21 @@ function viewColors() {
   return `
   <div class="line" style="margin-top:-6px"><span class="muted sm l">${S.colors.length} 种颜色，默认按印刷方案自动转换，点开可单独调整</span><button class="btn small" data-act="scan-colors">重新扫描</button></div>
   ${S.colors.length ? `<div class="divided rule" style="border-bottom:1px solid var(--line);margin-top:-10px">${rows}</div>` : `<div class="empty">没有找到颜色</div>`}
-  ${disclose('map-open', S.mapOpen, '颜色映射表', s.activeMap ? `正在使用：${s.activeMap}${dirty ? '（未保存）' : ''}` : '把这些颜色设置存起来，下次或其他文件直接套用')}
-  ${
-    S.mapOpen
-      ? `<div class="section" style="gap:6px;margin-top:-10px">
-      <div class="line"><select data-act="load-map"><option value="">— 不使用 —</option>${allMaps().map((m) => `<option ${m.name === s.activeMap ? 'selected' : ''}>${esc(m.name)}${m.file ? '（本文件）' : ''}</option>`).join('')}</select>${s.activeMap ? '<button class="link muted" data-act="del-map">删除</button>' : ''}</div>
-      <div class="line"><input type="text" id="map-name" placeholder="映射表名称，例如：品牌色 2026" value="${esc(s.activeMap)}"><button class="btn small" data-act="save-map">保存</button></div>
+  <button class="settings-link" data-act="sheet" data-v="resources"><span>色板与颜色映射</span>${IC.right}</button>`;
+}
+
+function viewColorResources() {
+  const s = S.settings;
+  const cur = allMaps().find((m) => m.name === s.activeMap);
+  const dirty = s.activeMap && JSON.stringify(cur?.overrides || {}) !== JSON.stringify(s.overrides);
+  return `${sheetHead('色板与颜色映射')}
+    <section class="settings-group"><h2>颜色映射表</h2>
+      ${s.activeMap ? `<p class="hint" data-notr>${esc(s.activeMap)}${dirty ? ` ${tr('（未保存）')}` : ''}</p>` : ''}
+      <div class="line"><label class="sm" for="map-select">应用</label><select id="map-select" data-act="load-map"><option value="">— 不使用 —</option>${allMaps().map((m) => `<option ${m.name === s.activeMap ? 'selected' : ''}>${esc(m.name)}${m.file ? '（本文件）' : ''}</option>`).join('')}</select>${s.activeMap ? '<button class="link muted" data-act="del-map">删除</button>' : ''}</div>
+      <div class="line"><label class="sm" for="map-name">名称</label><input type="text" id="map-name" placeholder="映射表名称，例如：品牌色 2026" value="${esc(s.activeMap)}"><button class="btn small" data-act="save-map">保存</button></div>
       ${chk('mapsInFile', '保存到当前 Figma 文件', '（团队成员打开同一文件都能用）')}
-    </div>`
-      : ''
-  }
-  <div class="well" style="display:flex;align-items:center;gap:8px"><span class="muted xs grow">色板库：${S.lib.length ? `已导入 ${S.lib.length} 个色板` : '可导入潘通 / RAL / HKS 色板（.ase 或 CSV）'}</span><button class="link" data-act="import-lib">导入</button>${S.lib.length ? '<button class="link muted" data-act="clear-lib">清空</button>' : ''}</div>`;
+    </section>
+    <section class="settings-group"><h2>色板库</h2><p class="hint">${S.lib.length ? `已导入 ${S.lib.length} 个色板` : '可导入潘通 / RAL / HKS 色板（.ase 或 CSV）'}</p><div class="line"><button class="btn" data-act="import-lib">导入</button>${S.lib.length ? '<button class="link muted" data-act="clear-lib">清空</button>' : ''}</div></section>`;
 }
 
 function colorEditor(c: ScannedColor) {
@@ -1508,7 +1543,7 @@ function viewTools() {
   const pickHex = engine ? engine.proofHex(s.pick) : '#ccc';
   const tool = (id: string, icon: string, title: string, desc: string, body: () => string) => {
     const open = S.toolOpen === id;
-    return `<div class="tool"><div class="tool-h" data-act="tool" data-v="${id}"><span class="ic">${icon}</span><span class="grow" style="display:flex;flex-direction:column"><span style="font-weight:500">${title}</span><span class="muted xs">${desc}</span></span>${IC.chev.replace('class="chev"', `class="chev ${open ? 'open' : ''}"`)}</div>${open ? `<div class="tool-b">${body()}</div>` : ''}</div>`;
+    return `<div class="tool"><button class="tool-h" data-act="tool" data-v="${id}" aria-expanded="${open}" aria-controls="tool-${id}"><span class="ic">${icon}</span><span class="grow">${title}</span>${IC.chev.replace('class="chev"', `class="chev ${open ? 'open' : ''}"`)}</button>${open ? `<div class="tool-b" id="tool-${id}"><p class="hint xs">${desc}</p>${body()}</div>` : ''}</div>`;
   };
   const measure = m.length
     ? m
@@ -1518,16 +1553,13 @@ function viewTools() {
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${mbox('宽', 'w', n.id, toUnit((n.w * 25.4) / 72), S.settings.unit)}${mbox('高', 'h', n.id, toUnit((n.h * 25.4) / 72), S.settings.unit)}
         ${n.fontSize !== undefined ? mbox('字号', 'fontSize', n.id, n.fontSize, 'pt') : ''}${n.strokeWeight !== undefined ? mbox('描边', 'strokeWeight', n.id, n.strokeWeight, 'pt') : ''}${n.cornerRadius !== undefined ? mbox('圆角', 'cornerRadius', n.id, toUnit((n.cornerRadius * 25.4) / 72), S.settings.unit) : ''}
-      </div>
-      ${n.hasImage ? `<div style="display:flex;gap:8px"><button class="btn small" data-act="replace-image" data-v="${n.id}">替换图片（保留裁切）</button><button class="btn small" data-act="upscale" data-v="${n.id}">图片放大 2 倍</button></div>` : ''}</div>`,
+      </div></div>`,
         )
         .join('<div class="rule"></div>')
     : `<p class="hint">在画布上选中任意图层，这里会显示它的实际尺寸，可以直接改。</p>`;
-  return `${sheetHead('工具箱', seg('unit', [['mm', 'mm'], ['cm', 'cm'], ['in', 'in'], ['pt', 'pt']]))}
-  <div class="card strong" style="display:flex;flex-direction:column;gap:10px;margin-top:-4px">
-    <div style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 18 18"><rect x="1.5" y="5.5" width="15" height="7" rx="1" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M4.5 5.5v3M7.5 5.5v2M10.5 5.5v3M13.5 5.5v2" stroke="currentColor" stroke-width="1.2"/></svg><span style="font-weight:600" class="grow">实物尺寸</span>${chk('keepRatio' as any, '改宽高时保持比例')}</div>
-    ${measure}
-  </div>
+  return `${sheetHead('画布工具', seg('unit', [['mm', 'mm'], ['cm', 'cm'], ['in', 'in'], ['pt', 'pt']]))}
+  <p class="hint xs">直接修改画布上的图层</p>
+  ${tool('measure', '<svg width="18" height="18" viewBox="0 0 18 18"><rect x="1.5" y="5.5" width="15" height="7" rx="1" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M4.5 5.5v3M7.5 5.5v2M10.5 5.5v3M13.5 5.5v2" stroke="currentColor" stroke-width="1.2"/></svg>', '实物尺寸', '宽高、字号、描边和圆角', () => `${chk('keepRatio' as any, '改宽高时保持比例')}${measure}`)}
   <div style="display:flex;flex-direction:column">
   <span class="kicker" style="padding:4px 0">颜色与标注</span>
   ${tool('pick', INKS.replace(/<i /g, '<i class="sm" '), '按 CMYK 数值上色', '输入印刷厂给的色值，填充或描边所选', () => `<div style="display:flex;gap:10px;align-items:center"><span style="width:36px;height:36px;border-radius:8px;flex:none;background:${pickHex};border:1px solid var(--line)"></span><div class="grid4" data-notr>${(['c', 'm', 'y', 'k'] as const).map((k) => `<label>${k.toUpperCase()}${num('pick.' + k, { min: 0, max: 100, w: 50 })}</label>`).join('')}</div></div><div style="display:flex;gap:8px;align-items:center"><button class="btn small" data-act="pick-apply" data-v="fill">填充所选</button><button class="btn small" data-act="pick-apply" data-v="stroke">描边所选</button><span class="muted xs">导出时按这组 CMYK 精确输出</span></div>`)}
@@ -1536,12 +1568,11 @@ function viewTools() {
   ${tool('pagenum', `<svg width="18" height="18" viewBox="0 0 18 18"><rect x="3" y="1.5" width="12" height="15" rx="1" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M10 13h3" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round"/></svg>`, '页码', '按导出顺序自动编号，奇偶页左右对称', () => `<div class="line"><span class="l sm">格式</span><span data-notr style="display:flex;flex:1">${sel('pageNum.format', [['{n}', '1'], ['{n} / {total}', '1 / 12'], ['- {n} -', '- 1 -'], ['P{n}', 'P1'], ['Page {n}', 'Page 1'], ['第 {n} 页', '第 1 页'], ['{n} ページ', '1 ページ'], ['{n} 페이지', '1 페이지'], ['Página {n}', 'Página 1'], ['Seite {n}', 'Seite 1']])}</span></div><div class="line"><span class="l sm">起始数字</span>${num('pageNum.start', { min: 0, w: 56 })}</div><div class="line"><span class="l sm">跳过前几页（封面）</span>${num('pageNum.skip', { min: 0, w: 56 })}</div><div class="line"><span class="l sm">位置</span>${seg('pageNum.position', [['outer', '外侧角'], ['center', '底部居中']])}</div>${chk('pageNum.create', '没有名为「页码」的文字图层时自动添加')}<div><button class="btn small" data-act="page-numbers">按导出页顺序编页码</button></div>`)}
   ${tool('image', `<svg width="18" height="18" viewBox="0 0 18 18"><rect x="1.5" y="3" width="15" height="12" rx="1.5" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M3 13l4-4 3 3 2-2 3 3" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/></svg>`, '替换 / 放大图片', '换图保留裁切；低清图放大 2 倍', () => {
     const imgs = m.filter((n) => n.hasImage);
-    return imgs.length ? imgs.map((n) => `<div class="line"><span class="l ell" data-notr>${esc(n.name)}</span><button class="btn small" data-act="replace-image" data-v="${n.id}">替换图片</button><button class="btn small" data-act="upscale" data-v="${n.id}">放大 2 倍</button></div>`).join('') : `<p class="hint xs">先在画布上选中带图片的图层。</p>`;
+    return imgs.length ? `<p class="hint xs">替换或放大图片会修改原稿；放大不会补回缺失的细节。</p>${imgs.map((n) => `<div class="line"><span class="l ell" data-notr>${esc(n.name)}</span><button class="btn small" data-act="replace-image" data-v="${n.id}">替换图片</button><button class="btn small" data-act="upscale" data-v="${n.id}">放大 2 倍</button></div>`).join('')}` : `<p class="hint xs">先在画布上选中带图片的图层。</p>`;
   })}
   ${tool('rescale', `<svg width="18" height="18" viewBox="0 0 18 18"><rect x="1.5" y="1.5" width="15" height="15" rx="1" stroke="var(--fg3)" stroke-width="1.2" fill="none"/><rect x="5" y="5" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>`, '缩回实际尺寸', '按 300 DPI 像素做的画板，一键换算成实际尺寸', () => `<p class="hint xs">例如 A4 做成 2480×3508 像素的画板，缩回 210×297 mm，图片清晰度不变。</p><div class="line"><span class="l sm">原来按</span><select id="rescale-dpi" style="flex:none;width:90px"><option>300</option><option>150</option><option>200</option><option>350</option><option>600</option></select><span class="unit">DPI</span><button class="btn small" data-act="rescale">缩回实际尺寸</button></div>`)}
   <span class="kicker" style="padding:12px 0 4px">包装</span>
   ${tool('box', `<svg width="18" height="18" viewBox="0 0 18 18"><path d="M9 1.5l7 3v9l-7 3-7-3v-9z M2 4.5l7 3 7-3 M9 7.5v9" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round" stroke-dasharray="2 1.5"/></svg>`, '纸盒刀版生成', '插舌盒 · 托盘盒 · 飞机盒，输入长宽高即可', () => `<div class="line"><span class="l sm">盒型</span>${seg('box.style', [['ste', '插舌盒'], ['tray', '托盘盒'], ['mailer', '飞机盒']])}</div><div class="grid4"><label>长${num('box.w', { min: 10, w: 56 })}</label><label>宽${num('box.d', { min: 10, w: 56 })}</label><label>高${num('box.h', { min: 5, w: 56 })}</label><span class="unit" style="align-self:center">mm</span></div><p class="hint xs">内尺寸。生成后刀线为实线、折线为虚线，图层名已按规则命名，导出时自动输出为刀版专色。</p><div><button class="btn small" data-act="box">生成刀版</button></div>`)}
-  ${tool('dieline', `<svg width="18" height="18" viewBox="0 0 18 18"><path d="M2 9h14" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="3 2"/><path d="M2 4h14M2 14h14" stroke="currentColor" stroke-width="1.2"/></svg>`, '刀线与工艺识别规则', '按图层名或颜色识别刀线、压痕、光油、烫金等', () => `<div class="line"><span class="l sm">识别方式</span>${seg('dielineMode', [['off', '关闭'], ['auto', '按图层名'], ['manual', '手动指定']])}</div>${s.dielineMode === 'manual' ? `<div class="line">${txt('dielineNames', '专色名，例如 CutContour, Kiss Cut')}</div>` : ''}<p class="hint xs">图层名以下面关键词开头的图层，会单独输出成对应的专色版，并自动叠印。刀线、折线、压痕、打孔会输出成真正的单线路径。也可以在「检查 → 颜色」里把某个颜色指定为刀线或工艺。</p><div class="divided">${DIELINE_KEYWORDS.map((d) => `<div class="line" style="min-height:28px"><span class="mono" style="width:110px;flex:none">${d.spot}</span><span class="muted xs ell" data-notr>${d.key.source.replace(/^\^\\\[\?\\s\*\(/, '').replace(/\)$/, '').replace(/\|/g, ' / ').replace(/\.\?/g, ' ')}</span></div>`).join('')}</div>`)}
   </div>
   <input type="file" id="file-image" accept="image/png,image/jpeg,image/webp" hidden>`;
 }
@@ -1626,16 +1657,26 @@ document.addEventListener('click', async (ev) => {
     case 'route':
       if (S.route === 'welcome') s.onboarded = true;
       S.route = v as Route;
+      if (v === 'check' && (el.closest('.quality') || el.closest('dialog'))) S.checkTab = 'issues';
       S.sheet = '';
+      S.sheetStack = [];
       render();
       onEnter();
       if (S.route === 'export' && S.frames.length) post('thumbs', { ids: S.frames.map((f) => f.id) });
       break;
     case 'sheet':
       if (v === 'imposition') S.impBackup = structuredClone(s.imp);
-      S.sheet = v as Sheet;
+      if (el.dataset.root) {
+        S.sheetStack = [];
+        S.sheet = v as Sheet;
+      } else if (!v) {
+        S.sheet = S.sheetStack.pop() || '';
+      } else {
+        S.sheetStack.push(S.sheet);
+        S.sheet = v as Sheet;
+      }
       render();
-      if (!v) onEnter();
+      if (!S.sheet) onEnter();
       break;
     case 'ctab':
       S.checkTab = v as CheckTab;
@@ -1650,8 +1691,33 @@ document.addEventListener('click', async (ev) => {
       render();
       break;
     case 'export':
+      confirmExport();
+      break;
+    case 'export-cancel':
+      ($('export-confirm') as HTMLDialogElement).close();
+      break;
+    case 'export-confirm':
+      if (S.confirmKey !== confirmationKey()) return;
+      ($('export-confirm') as HTMLDialogElement).close();
       doExport();
       break;
+    case 'pages-open':
+      S.pagesOpen = !S.pagesOpen;
+      render();
+      break;
+    case 'more-open':
+      s.advancedOpen = !s.advancedOpen;
+      saveSettings();
+      render();
+      break;
+    case 'page-move': {
+      const from = S.order.indexOf(v);
+      const to = from + Number(el.dataset.dir);
+      if (from < 0 || to < 0 || to >= S.order.length) return;
+      S.order.splice(to, 0, S.order.splice(from, 1)[0]);
+      render();
+      break;
+    }
     case 'tg':
       update(el.dataset.path!, !getPath(el.dataset.path!));
       break;
@@ -1687,7 +1753,7 @@ document.addEventListener('click', async (ev) => {
       break;
     case 'imp-cancel':
       if (S.impBackup) s.imp = S.impBackup;
-      S.sheet = '';
+      S.sheet = S.sheetStack.pop() || '';
       saveSettings();
       render();
       break;
@@ -1727,10 +1793,6 @@ document.addEventListener('click', async (ev) => {
       break;
     case 'std-open':
       S.stdOpen = !S.stdOpen;
-      render();
-      break;
-    case 'map-open':
-      S.mapOpen = !S.mapOpen;
       render();
       break;
     case 'result':
@@ -1937,7 +1999,7 @@ document.addEventListener('click', async (ev) => {
       if (!name) return notify('请先填写方案名称', true);
       // a profile keeps output settings only — not colours, documents or per-session values
       const keep: Partial<Settings> = structuredClone(s);
-      for (const k of ['overrides', 'colorFinishing', 'activeMap', 'doc', 'customPapers', 'title', 'pick', 'onboarded', 'profileId', 'profileBase', 'lang'] as const) delete keep[k];
+      for (const k of ['overrides', 'colorFinishing', 'activeMap', 'doc', 'customPapers', 'title', 'pick', 'onboarded', 'advancedOpen', 'profileId', 'profileBase', 'lang'] as const) delete keep[k];
       S.presets = [...S.presets.filter((p) => p.name !== name), { name, settings: keep }];
       post('store-set', { key: 'pk_presets', value: S.presets });
       s.profileId = 'user:' + S.presets.findIndex((p) => p.name === name);
@@ -2031,7 +2093,7 @@ function onChange(ev: Event) {
   const el = ev.target as HTMLInputElement;
   const act = el.dataset.act;
   if (el.id === 'lang') {
-    S.settings.lang = el.value as Lang;
+    S.settings.lang = el.value as Settings['lang'];
     saveSettings();
     applyLang();
     render();
@@ -2198,12 +2260,26 @@ function preflightOpts() {
 }
 
 function runPreflight() {
-  S.pendingIssuesKey = selectionKey();
-  post('scan-colors');
-  post('preflight', { opts: preflightOpts() });
+  S.pendingIssuesKey = checkKey();
+  S.pendingCheckId = 'check' + reqSeq++;
+  S.checkError = '';
+  post('preflight', { opts: preflightOpts(), reqId: S.pendingCheckId });
+  render();
 }
 
 // ---------------- export ----------------
+
+function confirmExport() {
+  if (!S.frames.length || S.busy) return;
+  const issues = currentIssues();
+  const risks = issues?.filter((i) => i.level === 'warning' || i.level === 'error') || [];
+  if (issues && !risks.length) { doExport(); return; }
+  const dialog = $('export-confirm') as HTMLDialogElement;
+  S.confirmKey = confirmationKey();
+  dialog.innerHTML = `<h2 id="confirm-title">${issues ? '仍有风险，确认继续？' : '还未完成当前检查'}</h2><p class="hint">${issues ? '继续导出不会消除这些风险。' : '可以先检查，也可以跳过检查导出。跳过不代表文件适合送印。'}</p>${risks.length ? `<ul>${risks.map((i) => `<li>${esc(i.msg)}</li>`).join('')}</ul>` : S.settings.mode === 'cmyk' && !currentProfile() ? '<p class="hint">未选择 ICC，颜色仅能近似换算。</p>' : ''}<div class="dialog-actions"><button class="btn" data-act="export-cancel" autofocus>取消</button><button class="btn" data-act="route" data-v="check">${issues ? '查看检查' : '开始检查'}</button><button class="btn primary" data-act="export-confirm">${issues ? '接受风险并导出' : '跳过检查并导出'}</button></div>`;
+  translateDom(dialog);
+  dialog.showModal();
+}
 
 function busy(on: boolean, msg = '') {
   S.busy = on;
@@ -2245,12 +2321,22 @@ function impOption(): Imposition | undefined {
 
 async function doExport() {
   const s = S.settings;
-  if (!S.frames.length) return;
+  if (!S.frames.length || S.busy) return;
   busy(true, '准备导出…');
   try {
     if (s.blockLowPpi) {
       progress('检查图片分辨率…', 0.02);
-      const res = await request<{ issues: Issue[] }>('preflight', { opts: preflightOpts() }, 'preflight');
+      const key = checkKey();
+      const res = await request<{ issues: Issue[]; images: ImageInfoNode[]; colors: ScannedColor[] }>('preflight', { opts: preflightOpts() }, 'preflight');
+      if (key !== checkKey()) {
+        notify('设置或选择已改变，请重新检查', true);
+        return;
+      }
+      S.colors = res.colors;
+      S.baseIssues = res.issues;
+      S.issues = [...res.issues, ...colorIssues()];
+      S.images = res.images;
+      S.issuesKey = key;
       const low = res.issues.filter((i) => i.cat === 'resolution');
       if (low.length) {
         busy(false);
@@ -2388,6 +2474,10 @@ async function doExport() {
 
 // dev aid: lets the test harness walk every view and list untranslated strings
 (window as any).__pk = { S, render, update, missing, setLang: (l: Lang) => { S.settings.lang = l; applyLang(); render(); } };
+
+$('export-confirm').addEventListener('close', () => {
+  if (S.route === 'export' && !S.sheet && !S.busy) $('foot').querySelector<HTMLButtonElement>('[data-act="export"]')?.focus();
+});
 
 render();
 post('init');

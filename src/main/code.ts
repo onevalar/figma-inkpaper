@@ -996,9 +996,12 @@ figma.ui.onmessage = async (msg: any) => {
         post('texts', { texts: textNodes(targetFrames()) });
         break;
       }
-      case 'preflight':
-        post('preflight', await preflight(targetFrames(), msg.opts));
+      case 'preflight': {
+        const frames = targetFrames();
+        const [result, colors] = await Promise.all([preflight(frames, msg.opts), scanColors(frames)]);
+        post('preflight', { ...result, colors, reqId: msg.reqId });
         break;
+      }
       case 'export':
         post('exported', { frames: await exportFrames(msg.req) });
         break;
@@ -1102,6 +1105,6 @@ figma.ui.onmessage = async (msg: any) => {
         break;
     }
   } catch (e: any) {
-    post('error', { message: String(e?.message || e), during: msg.type });
+    post('error', { message: String(e?.message || e), during: msg.type, reqId: msg.reqId });
   }
 };

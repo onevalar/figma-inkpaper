@@ -1,7 +1,7 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>Inkpaper harness</title>
-<style>body{margin:0;display:flex;gap:16px;font:12px sans-serif;background:#2c2c2c;color:#ddd}iframe{width:480px;height:740px;border:0;background:#fff;margin:16px}#log{flex:1;white-space:pre-wrap;padding:16px;font:11px monospace;overflow:auto;height:100vh;box-sizing:border-box}</style></head>
-<body><iframe id="ui" src="../dist/ui.html"></iframe><div id="log"></div>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Inkpaper · 正式界面预览</title>
+<style>body{margin:0;display:flex;gap:32px;padding:32px;justify-content:center;align-items:flex-start;font:13px/1.6 system-ui,sans-serif;background:#eceef1;color:#242730}iframe{width:480px;height:740px;border:1px solid #d0d4dc;border-radius:12px;background:#fff;flex:none;box-shadow:0 8px 28px -16px #1e273338}aside{max-width:320px}h1{font-size:24px;line-height:1.4}p{color:#626874}button{font:inherit;min-height:36px;border:1px solid #aab0bb;border-radius:8px;padding:4px 12px;background:white;cursor:pointer;margin:4px 4px 4px 0}button:focus-visible{outline:2px solid #365fbc;outline-offset:3px}#log{white-space:pre-wrap;font:11px/1.5 monospace;max-height:200px;overflow:auto;color:#626874} @media(max-width:860px){body{flex-direction:column;align-items:center;padding:16px;gap:16px}aside{max-width:480px}iframe{max-width:100%;box-sizing:border-box}}</style></head>
+<body><style>figure.preview{margin:0;width:482px;max-width:100%;flex:none}figure.preview iframe{display:block;width:100%;height:742px;box-sizing:border-box}figcaption{margin-top:10px;text-align:center;color:#626874;font-size:11px}</style><aside id="review-context"><p>已确认方案 · 正式代码预览</p><h1>任务工作台<br>＋分段导航</h1><p>这里加载的是插件实际界面，不再是独立交互原型。可以切换工作区、更改设置并试用导出。</p><p id="preview-limits">画板、检查结果和画布操作由测试环境模拟；下载会经过真实导出引擎，但样例不用于送印。实际 Figma 画布仍需在 Figma 内验收。</p><div id="preview-controls"><button id="theme">切换深浅主题</button><button id="selection">切换空选择</button><button id="quality">切换清晰图片</button></div><details><summary>测试消息与下载结果</summary><div id="log"></div></details></aside><figure class="preview" id="fig-live-plugin"><iframe id="ui" title="Inkpaper 插件实际界面" src="../dist/ui.html"></iframe><figcaption>实际插件界面 · 默认 480 × 740 · 测试画板，不连接 Figma</figcaption></figure>
 <script>
 // Fake Figma main thread: answers the UI's messages so the UI + export pipeline can be tested in a real browser.
 const MM = 72/25.4;
@@ -9,41 +9,58 @@ const store = {};
 const log = (...a) => { document.getElementById('log').textContent += a.join(' ') + '\n'; };
 const ui = document.getElementById('ui');
 const send = (msg) => ui.contentWindow.postMessage({ pluginMessage: msg }, '*');
+window.mock = { holdChecks: false, pendingChecks: [], failCheck: false, ppi: 152 };
+let hasSelection = true;
+const colors = [
+  { hex: '#E30613', count: 4, where: ['fill'], inGradient: false, sampleNode: '2:1' },
+  { hex: '#000000', count: 12, where: ['text'], inGradient: false },
+  { hex: '#00A0E9', count: 2, where: ['gradient'], inGradient: true },
+  { hex: '#333333', count: 3, where: ['text'], inGradient: false },
+  { hex: '#FFFFFF', count: 1, where: ['fill'], inGradient: false },
+];
 const frames = [
   { id: '1:1', name: 'A4 海报', w: 210*MM, h: 297*MM, meta: null },
   { id: '1:2', name: '名片 正面', w: 96*MM, h: 60*MM, meta: { trimW: 90, trimH: 54, bleed: 3, margin: 0, safety: 3 } },
 ];
 window.downloads = [];
-const origCreate = URL.createObjectURL;
+window.exportRequests = [];
+document.getElementById('theme').onclick = () => ui.contentDocument.documentElement.classList.toggle('figma-dark');
+document.getElementById('selection').onclick = () => { hasSelection = !hasSelection; send({ type: 'selection', frames: hasSelection ? frames : [], measure: [] }); };
+document.getElementById('quality').onclick = () => { mock.ppi = mock.ppi === 152 ? 320 : 152; send({ type: 'selection', frames: hasSelection ? frames : [], measure: [] }); };
 window.addEventListener('message', async (ev) => {
   const m = ev.data && ev.data.pluginMessage; if (!m) return;
   log('← ' + m.type + (m.key ? ' ' + m.key : ''));
   switch (m.type) {
     case 'init': {
-      const icc = new Uint8Array(await (await fetch('fixtures/JapanColor2001Coated.icc')).arrayBuffer());
-      store['pk_icc_jc'] = icc;
-      send({ type: 'init', settings: store.pk_settings || null, profiles: [{ id: 'jc', name: 'Japan Color 2001 Coated', size: icc.length }], maps: [], presets: [], docProfile: 'SRGB', fileName: '测试文件' });
+      // Proprietary ICC fixtures are optional; never pass a 404 HTML response as a colour profile.
+      const response = new URLSearchParams(location.search).has('no-icc') ? new Response(null, { status: 404 }) : await fetch('fixtures/JapanColor2001Coated.icc');
+      const icc = response.ok ? new Uint8Array(await response.arrayBuffer()) : null;
+      if (icc) store['pk_icc_jc'] = icc;
+      send({ type: 'init', settings: store.pk_settings || { onboarded: true, lang: 'zh-CN' }, profiles: icc ? [{ id: 'jc', name: 'Japan Color 2001 Coated', size: icc.length }] : [], maps: [], presets: [], docProfile: 'SRGB', fileName: '测试文件' });
       send({ type: 'selection', frames, explicit: true, measure: [{ id: '2:1', name: '红色通栏', type: 'RECTANGLE', w: 612, h: 190, cornerRadius: 0, hasImage: false }, { id: '3:1', name: '标题', type: 'TEXT', w: 300, h: 40, fontSize: 32 }, { id: '4:1', name: '主视觉', type: 'RECTANGLE', w: 300, h: 200, strokeWeight: 1, cornerRadius: 4, hasImage: true }] });
       break; }
     case 'store-get': send({ type: 'store-value', key: m.key, value: store[m.key], reqId: m.reqId }); break;
     case 'store-set': store[m.key] = m.value; break;
-    case 'scan-colors': send({ type: 'colors', colors: [
-      { hex: '#E30613', count: 4, where: ['fill'], inGradient: false, sampleNode: '2:1' },
-      { hex: '#000000', count: 12, where: ['text'], inGradient: false },
-      { hex: '#00A0E9', count: 2, where: ['gradient'], inGradient: true },
-      { hex: '#333333', count: 3, where: ['text'], inGradient: false },
-      { hex: '#FFFFFF', count: 1, where: ['fill'], inGradient: false } ] }); break;
+    case 'scan-colors': send({ type: 'colors', colors }); break;
     case 'scan-text': send({ type: 'texts', texts: [
       { id: '3:1', frame: 'A4 海报', name: '标题', preview: '夏日音乐节', fonts: ['PingFang SC Semibold'], size: 48, hasEffects: true, missingFont: false, mode: 'live' },
       { id: '3:2', frame: 'A4 海报', name: '正文', preview: '时间：8月20日 地点：…', fonts: ['PingFang SC Regular'], size: 9, hasEffects: false, missingFont: false, mode: 'live' } ] }); break;
-    case 'preflight': send({ type: 'preflight', issues: [
-      { level: 'info', cat: 'geometry', frame: 'A4 海报', nodeId: '1:1', msg: '「A4 海报」没有出血。可在“文档”页添加，或导出时自动延伸边缘元素。' },
-      { level: 'warning', cat: 'resolution', frame: 'A4 海报', nodeId: '4:1', msg: '图片「主视觉」实际分辨率 152 ppi，低于 250 ppi，印刷会模糊。' } ],
-      images: [{ id: '4:1', frame: 'A4 海报', name: '主视觉', px: '1200×800', ppi: 152 }] }); break;
+    case 'preflight': {
+      const reply = mock.failCheck ? { type: 'error', during: 'preflight', reqId: m.reqId, message: '模拟检查失败' } : { type: 'preflight', reqId: m.reqId, colors, issues: [
+        { level: 'info', cat: 'geometry', frame: 'A4 海报', nodeId: '1:1', msg: '「A4 海报」没有出血。可在「准备」里添加，或导出时自动延伸边缘元素。', fix: 'autoBleed' },
+        ...(mock.ppi < m.opts.minPpi ? [{ level: 'warning', cat: 'resolution', frame: 'A4 海报', nodeId: '4:1', msg: `图片「主视觉」实际分辨率 ${mock.ppi} ppi，低于 ${m.opts.minPpi} ppi，印刷会模糊。`, fix: 'upscale' }] : []) ],
+        images: [{ id: '4:1', frame: 'A4 海报', name: '主视觉', px: '1200×800', ppi: mock.ppi }] };
+      if (mock.holdChecks) mock.pendingChecks.push(reply); else send(reply);
+      break; }
     case 'export': {
+      window.exportRequests.push(m.req);
       const pdf = new Uint8Array(await (await fetch('fixtures/test.pdf')).arrayBuffer());
+      const png = new Uint8Array(await (await fetch('fixtures/test-raster.png')).arrayBuffer());
       send({ type: 'progress', msg: '从 Figma 导出…', frac: 0.2 });
-      send({ type: 'exported', frames: [{ id: '1:1', name: 'A4 海报', pdf, trimW: 210*MM, trimH: 297*MM, srcBleed: { t: 0, r: 0, b: 0, l: 0 }, scale: 1, sentinels: [], vectorStrokes: [], pageH: 297*MM, hairlinesFixed: 0 }] });
+      send({ type: 'exported', frames: m.req.frameIds.map(id => {
+        const f = frames.find(f => f.id === id);
+        return { id, name: f.name, pdf, png, trimW: (f.meta?.trimW || f.w/MM)*MM, trimH: (f.meta?.trimH || f.h/MM)*MM, srcBleed: f.meta?.bleed*MM || 0, scale: 1, sentinels: [], vectorStrokes: [], pageH: f.h, hairlinesFixed: 0 };
+      }) });
       break; }
     case 'render': {
       const png = new Uint8Array(await (await fetch('fixtures/test-raster.png')).arrayBuffer());
@@ -51,6 +68,7 @@ window.addEventListener('message', async (ev) => {
     case 'thumbs': {
       const png = new Uint8Array(await (await fetch('fixtures/test-raster.png')).arrayBuffer());
       for (const id of m.ids) send({ type: 'thumb', id, png }); break; }
+    case 'select-node': log('定位到样例图层 ' + m.id); break;
     case 'notify': log('NOTIFY: ' + m.text + (m.error ? ' (error)' : '')); break;
   }
 });
