@@ -26,9 +26,11 @@ const inlineUi = {
     b.onEnd((r) => {
       if (r.errors.length) return;
       const js = fs.readFileSync('dist/ui.js', 'utf8').replace(/<\/script/gi, '<\\/script');
-      const html = fs.readFileSync('src/ui/ui.html', 'utf8').replace('/*__UI_JS__*/', () => js);
+      const css = fs.readFileSync('dist/ui.css', 'utf8').replace(/<\/style/gi, '<\\/style');
+      const html = fs.readFileSync('src/ui/ui.html', 'utf8').replace('/*__UI_CSS__*/', () => css).replace('/*__UI_JS__*/', () => js);
       fs.writeFileSync('dist/ui.html', html);
       fs.rmSync('dist/ui.js');
+      fs.rmSync('dist/ui.css');
       console.log(`ui.html ${(html.length / 1024).toFixed(0)} KB`);
     });
   },
@@ -36,13 +38,14 @@ const inlineUi = {
 
 const main = { entryPoints: ['src/main/code.ts'], outfile: 'dist/code.js', bundle: true, target: 'es2017', format: 'iife', logLevel: 'info' };
 const ui = {
-  entryPoints: ['src/ui/ui.ts'],
+  entryPoints: ['src/ui/app.tsx'],
   outfile: 'dist/ui.js',
   bundle: true,
   target: 'es2020',
   format: 'iife',
   minify: !watch,
-  define: { __LCMS_WASM_B64__: JSON.stringify(wasmB64), 'import.meta.url': '"file:///presskit/lcms.js"' },
+  loader: { '.module.css': 'local-css' },
+  define: { __LCMS_WASM_B64__: JSON.stringify(wasmB64), 'import.meta.url': '"file:///presskit/lcms.js"', 'process.env.NODE_ENV': '"production"' },
   // lcms-wasm's Emscripten loader probes for Node; keep those branches inert in the browser build
   external: ['module', 'fs', 'path', 'url'],
   plugins: [inlineUi],

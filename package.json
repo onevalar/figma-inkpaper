@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Inkpaper 纸墨 — local CMYK / print-ready PDF export plugin for Figma",
   "main": "index.js",
+  "imports": {
+    "#components/*": "./src/components/*"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -12,13 +15,24 @@
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
     "@noble/hashes": "^2.4.0",
+    "@radix-ui/react-accordion": "^1.3.0",
+    "@radix-ui/react-dialog": "^1.3.0",
+    "@radix-ui/react-select": "^2.4.0",
+    "@radix-ui/react-switch": "^1.4.0",
+    "@radix-ui/react-tabs": "^1.2.0",
     "lcms-wasm": "^1.0.5",
+    "lucide-react": "^1.55.0",
+    "motion": "^14.1.0",
     "pako": "^3.0.2",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.141.0",
     "@types/pako": "^2.0.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "esbuild": "^0.28.2",
     "opencc-js": "^1.4.2",
     "typescript": "^7.0.2"

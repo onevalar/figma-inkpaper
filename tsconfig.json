@@ -5,9 +5,10 @@
     "moduleResolution": "bundler",
     "strict": true,
     "noEmit": true,
+    "jsx": "react-jsx",
     "skipLibCheck": true,
     "lib": ["ES2020", "DOM"],
     "typeRoots": ["./node_modules/@types", "./node_modules/@figma"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

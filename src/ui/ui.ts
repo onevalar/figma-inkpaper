@@ -20,7 +20,9 @@ import {
 import { zip } from './zip';
 import { parseAse, parseSwatchCsv, LibSwatch } from './ase';
 import { decodeToRgb, buildProof, paint, PreviewMode, ProofData } from './preview';
-import { tr, translateDom, setLang, detectLang, LANGS, missing, Lang } from '../i18n/i18n';
+import { tr, setLang, detectLang, missing, Lang } from '../i18n/i18n';
+import { DOC_KINDS } from './views';
+import { renderApp } from './app';
 
 declare const __LCMS_WASM_B64__: string;
 
@@ -228,6 +230,7 @@ const S = {
   checkError: '',
   pendingCheckId: '',
   confirmKey: '',
+  confirmOpen: false,
   toolOpen: '',
   previewIdx: 0,
   pvLoading: '',
@@ -255,6 +258,8 @@ const S = {
   fileName: '',
   docProfile: 'SRGB',
   busy: false,
+  progressMessage: '处理中…',
+  progressValue: 0,
   password: '', // never persisted
   preview: null as null | { id: string; name: string; src: { w: number; h: number; rgb: Uint8Array }; data?: ProofData; mode: PreviewMode; paper: boolean; split: number },
 };
@@ -349,11 +354,7 @@ window.onmessage = (ev) => {
     }
     case 'thumb':
       S.thumbs[m.id] = 'data:image/png;base64,' + bytesToB64(m.png);
-      if (S.route === 'export' && !S.sheet) {
-        const img = document.querySelector(`[data-thumb="${CSS.escape(m.id)}"]`);
-        if (img instanceof HTMLImageElement) img.src = S.thumbs[m.id];
-        else render();
-      }
+      render();
       break;
     case 'colors':
       S.colors = m.colors;
@@ -519,7 +520,6 @@ setPngDecoder(async (bytes) => {
 // ---------------- helpers ----------------
 
 const $ = (id: string) => document.getElementById(id)!;
-const esc = (s: string) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const hexToRgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
 const fmtC = (c: CMYK) => [c.c, c.m, c.y, c.k].map((x) => Math.round(x)).join(' / ');
 const UNIT_NAMES: Record<Unit, string> = { mm: '毫米', cm: '厘米', in: '英寸', pt: '点', px: '像素' };
@@ -563,28 +563,6 @@ function update(path: string, v: any) {
   else render();
 }
 
-// form controls bound to settings paths (data-u = value stored in mm, shown in the current unit)
-const num = (path: string, opts: { min?: number; max?: number; step?: number; w?: number; unit?: boolean } = {}) => {
-  const v = getPath(path);
-  const shown = opts.unit ? toUnit(v) : v;
-  return `<input id="setting-${path}" type="number" data-bind="${path}" data-t="num" ${opts.unit ? 'data-u="1"' : ''} value="${shown}" ${opts.min !== undefined ? `min="${opts.min}"` : ''} ${opts.max !== undefined ? `max="${opts.max}"` : ''} step="${opts.unit && S.settings.unit !== 'mm' ? 'any' : opts.step ?? 1}" ${opts.w ? `style="width:${opts.w}px"` : ''}>`;
-};
-const U = () => `<span class="unit">${S.settings.unit}</span>`;
-const txt = (path: string, ph = '') => `<input id="setting-${path}" type="text" data-bind="${path}" value="${esc(getPath(path) ?? '')}" placeholder="${esc(ph)}">`;
-const chk = (path: string, label: string, hint = '') =>
-  `<label class="chk"><input type="checkbox" data-bind="${path}" data-t="bool" ${getPath(path) ? 'checked' : ''}><span>${label}${hint ? ` <span class="muted">${hint}</span>` : ''}</span></label>`;
-const seg = (path: string, opts: [any, string][]) =>
-  `<div class="seg">${opts.map(([v, l]) => `<button data-act="seg" data-path="${path}" data-v="${esc(JSON.stringify(v))}" aria-pressed="${getPath(path) === v}" class="${getPath(path) === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-const sel = (path: string, opts: [any, string][], t = 'str') =>
-  `<select id="setting-${path}" data-bind="${path}" data-t="${t}">${opts.map(([v, l]) => `<option value="${esc(String(v))}" ${String(getPath(path)) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
-const sides4 = (base: string) =>
-  `<div class="grid4">${(['t', 'r', 'b', 'l'] as const).map((k) => `<label>${{ t: '上', r: '右', b: '下', l: '左' }[k]}${num(`${base}.${k}`, { min: 0, step: 0.5, w: 54, unit: true })}</label>`).join('')}</div>`;
-
-function tacBadge(t: number) {
-  const cls = t < 280 ? 'b-ok' : t <= 320 ? 'b-warn' : 'b-err';
-  return `<span class="badge ${cls}" title="总墨量 TAC">${Math.round(t)}%</span>`;
-}
-
 function cmykFor(hex: string): { c: CMYK; kind: 'icc' | 'custom' | 'spot' | 'finish' } {
   const ov = S.settings.overrides[hex];
   if (S.settings.colorFinishing[hex]) return { c: { c: 0, m: 0, y: 0, k: 0 }, kind: 'finish' };
@@ -609,79 +587,16 @@ function applyLang() {
   setLang(l);
   document.documentElement.lang = l;
   post('set-lang', { lang: l });
-  translateDom(document.getElementById('overlay')!);
   // default names follow the interface language
   const DEFAULT_NAMES = ['印刷文档', 'Print document', '印刷ドキュメント', '인쇄 문서', 'Documento de impresión', 'Druckdokument', 'Document d’impression', '印刷文件'];
   if (DEFAULT_NAMES.includes(S.settings.doc.name)) S.settings.doc.name = tr('印刷文档');
 }
 
-// ---------------- views ----------------
+// ---------------- rendering / routes ----------------
 
-// Re-rendering replaces the form. A change event fires while focus is leaving a field (Tab, or a
-// press on another control); rebuilding the DOM right then would swallow that Tab / click. So
-// renders requested from a change are deferred until the press is over, and afterwards the
-// cursor is put back into whichever field had focus.
-const fieldKey = (el: Element | null): string | null => {
-  if (el instanceof HTMLButtonElement && el.dataset.act) return `button[data-act="${CSS.escape(el.dataset.act)}"]${['v', 'path', 'dir'].filter((k) => el.dataset[k] !== undefined).map((k) => `[data-${k}="${CSS.escape(el.dataset[k]!)}"]`).join('')}`;
-  if (!el || !(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) return null;
-  if (el.id) return `#${CSS.escape(el.id)}`;
-  if (el.dataset.bind) return `[data-bind="${CSS.escape(el.dataset.bind)}"]`;
-  return null;
-};
-let inChange = false;
-let lastTab = 0;
-document.addEventListener('keydown', (e) => e.key === 'Tab' && (lastTab = Date.now()), true);
-let pointerDown = false;
-let renderPending = false;
-const flushRender = () => {
-  if (!renderPending || pointerDown) return;
-  renderPending = false;
-  renderNow();
-};
-document.addEventListener('pointerdown', () => (pointerDown = true), true);
-const release = () => {
-  if (!pointerDown) return;
-  pointerDown = false;
-  setTimeout(flushRender, 0); // after the click event of this press
-};
-document.addEventListener('pointerup', release, true);
-document.addEventListener('pointercancel', release, true);
-window.addEventListener('blur', release);
-
-function render() {
-  if (inChange || renderPending) {
-    renderPending = true;
-    setTimeout(flushRender, 0);
-    return;
-  }
-  renderNow();
-}
-
-function renderNow() {
-  const focusKey = fieldKey(document.activeElement);
-  const ae = document.activeElement as HTMLInputElement | null;
-  let caret: [number | null, number | null] | null = null;
-  try {
-    if (ae && 'selectionStart' in ae) caret = [ae.selectionStart, ae.selectionEnd];
-  } catch {}
-  renderInner();
-  if (!focusKey) return;
-  const el = document.querySelector(focusKey) as HTMLInputElement | null;
-  if (!el || el === document.activeElement) return;
-  el.focus({ preventScroll: true });
-  try {
-    if (caret && caret[0] != null) el.setSelectionRange(caret[0], caret[1]);
-    // number fields don't expose the caret: after Tab select the value (as the browser does),
-    // otherwise put the caret at the end
-    else if (el instanceof HTMLInputElement && el.type === 'number') {
-      if (Date.now() - lastTab < 600) el.select();
-      else {
-        el.type = 'text';
-        el.setSelectionRange(el.value.length, el.value.length);
-        el.type = 'number';
-      }
-    }
-  } catch {}
+export function render() {
+  if (S.confirmOpen && (S.route !== 'export' || S.sheet || S.confirmKey !== confirmationKey())) S.confirmOpen = false;
+  renderApp();
 }
 
 function maybeRoute() {
@@ -714,48 +629,6 @@ async function ensurePreview() {
   }
   render();
 }
-
-function renderInner() {
-  $('head').innerHTML = viewHead();
-  translateDom($('head'));
-  const main = $('view');
-  main.classList.toggle('workbench', S.route === 'export' && !S.sheet);
-  const key = S.route + '/' + S.sheet + '/' + S.checkTab;
-  const scroll = key === lastViewKey ? main.scrollTop : 0;
-  lastViewKey = key;
-  main.innerHTML = viewMain();
-  translateDom(main);
-  main.scrollTop = scroll;
-  const dialog = $('export-confirm') as HTMLDialogElement;
-  if (dialog.open && (S.route !== 'export' || S.sheet || S.confirmKey !== confirmationKey())) dialog.close();
-  if (S.route === 'check' && S.checkTab === 'preview' && !S.sheet) paintPreview();
-  renderFoot();
-}
-let lastViewKey = '';
-
-// ---------- small building blocks ----------
-
-const IC = {
-  chev: `<svg class="chev" width="12" height="12" viewBox="0 0 12 12"><path d="M3 4.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>`,
-  right: `<svg width="10" height="10" viewBox="0 0 10 10" style="flex:none;color:var(--fg2)"><path d="M3.5 2l3 3-3 3" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg>`,
-  back: `<svg width="14" height="14" viewBox="0 0 12 12"><path d="M7.5 2.5L4 6l3.5 3.5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>`,
-  arrow: `<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  grid: `<svg width="14" height="14" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><rect x="8" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><rect x="1.5" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><rect x="8" y="8" width="4.5" height="4.5" rx="2.25" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>`,
-  gear: `<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.6 2.4-2 .9L4.2 6l-2 3.5 1.6 1.8v2.4l-1.6 1.8 2 3.5 2.2-.3 2 .9L9 22h6l.6-2.4 2-.9 2.2.3 2-3.5-1.6-1.8v-2.4l1.6-1.8-2-3.5-2.2.3-2-.9L15 3Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="12.5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`,
-  plus: `<svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`,
-  upload: `<svg width="22" height="22" viewBox="0 0 22 22"><path d="M11 14V3M6.5 7.5L11 3l4.5 4.5M3 15v3a1 1 0 001 1h14a1 1 0 001-1v-3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  okCircle: `<svg width="14" height="14" viewBox="0 0 14 14" style="flex:none"><circle cx="7" cy="7" r="6" fill="var(--ok)"/><path d="M4.2 7.2l1.9 1.9 3.7-4" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-};
-const INKS = `<span class="inks"><i style="background:#00A0E9"></i><i style="background:#E5007D"></i><i style="background:#FFE100"></i><i style="background:#1d1d1f"></i></span>`;
-const toggle = (path: string) => `<button class="toggle ${getPath(path) ? 'on' : ''}" data-act="tg" data-path="${path}" role="switch" aria-checked="${!!getPath(path)}"></button>`;
-const tline = (path: string, label: string, hint = '') => `<div class="line"><span class="l">${label}</span>${hint ? `<span class="muted xs">${hint}</span>` : ''}${toggle(path)}</div>`;
-const segRaw = (act: string, cur: string, opts: [string, string][], extra = '') =>
-  `<div class="seg ${extra}">${opts.map(([v, l]) => `<button data-act="${act}" data-v="${v}" class="${cur === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-const sheetHead = (title: string, right = '') => `<div class="sheet-h"><button class="back" data-act="sheet" data-v="" title="返回">${IC.back}</button><span class="title">${title}</span>${right}</div>`;
-const disclose = (act: string, open: boolean, title: string, sub = '') =>
-  `<button class="disclose ${open ? 'open' : ''}" data-act="${act}"><span class="grow" style="display:flex;flex-direction:column;gap:2px"><span class="t">${title}</span>${sub ? `<span class="muted xs ell">${sub}</span>` : ''}</span>${IC.chev}</button>`;
-const langSelect = () =>
-  `<select id="lang" data-notr><option value="" ${!S.settings.lang ? 'selected' : ''}>${tr('跟随系统')}</option>${LANGS.map((l) => `<option value="${l.code}" ${S.settings.lang === l.code ? 'selected' : ''}>${l.name}</option>`).join('')}</select>`;
 
 function frameSize(f: FrameInfo) {
   const k = f.meta?.scale || 1;
@@ -821,14 +694,7 @@ function profileName(id = S.settings.profileId) {
 }
 const profileDirty = () => !!S.settings.profileId && JSON.stringify(pick(S.settings, PROFILE_KEYS)) !== JSON.stringify(S.settings.profileBase || {});
 
-// ---------- header / footer ----------
-
-function viewHead() {
-  const step = (id: Route, n: string, label: string) =>
-    `<button class="step ${S.route === id ? 'on' : ''}" data-act="route" data-v="${id}" ${S.route === id ? 'aria-current="page"' : ''}><span class="n">${n}</span><span>${label}</span></button>`;
-  return `${S.route === 'welcome' ? '<span class="kicker" style="font-weight:600;color:var(--fg)" data-notr>Inkpaper 纸墨</span>' : `<nav class="steps" aria-label="${tr('插件工作区')}">${step('prepare', '1', '准备')}${step('check', '2', '检查')}${step('export', '3', '导出')}</nav>`}
-  <div class="header-actions">${S.route === 'welcome' ? '' : `<button class="btn small utility ${S.sheet === 'tools' ? 'primary' : ''}" data-act="sheet" data-root="1" data-v="${S.sheet === 'tools' ? '' : 'tools'}" title="画布工具" aria-label="${tr('画布工具')}">${IC.grid}<span class="utility-label">画布工具</span></button>`}<button class="btn small utility icon-only ${['settings', 'resources', 'transfer'].includes(S.sheet) || S.sheetStack.includes('settings') ? 'primary' : ''}" data-act="sheet" data-root="1" data-v="${S.sheet === 'settings' ? '' : 'settings'}" title="设置" aria-label="${tr('设置')}">${IC.gear}</button></div>`;
-}
+// ---------- output metadata ----------
 
 function impSheets(n: number): number {
   const imp = S.settings.imp;
@@ -877,501 +743,11 @@ function readiness(): [string, string, string] {
   return ['ok', '检查完成，未发现已知风险', '查看'];
 }
 
-function viewReadiness() {
-  const [cls, text, link] = readiness();
-  const is = currentIssues();
-  const count = is?.filter((i) => i.level === 'warning' || i.level === 'error').length || 0;
-  const label = count ? `${count} 项风险` : cls === 'ok' ? '未发现已知风险' : S.pendingIssuesKey === checkKey() ? '正在检查…' : S.issues ? '需重新检查' : '未检查';
-  return `<section class="quality compact ${cls}" title="${esc(tr(text))}"><span class="dot ${cls}" aria-hidden="true"></span><span class="grow">${label}</span>${link ? `<button class="link" data-act="route" data-v="check">${link === '检查' ? '检查' : '查看'} ${IC.right}</button>` : ''}</section>`;
-}
-
-function renderFoot() {
-  let html = '';
-  if (S.sheet === 'imposition') {
-    html = `<div style="display:flex;gap:8px"><button class="btn" style="height:40px" data-act="imp-cancel">取消</button><button class="btn primary big" style="flex:1" data-act="sheet" data-v="">${impLabel(S.settings.imp.kind)[0] === '不拼版' ? '完成' : `使用${impLabel(S.settings.imp.kind)[0]}`}</button></div>`;
-  } else if (S.sheet) {
-    html = '';
-  } else if (S.route === 'welcome') {
-    html = `<button class="btn primary big" data-act="onboard">开始</button>`;
-  } else if (S.route === 'prepare') {
-    const d = S.settings.doc;
-    const kind = DOC_KINDS.find((k) => k.id === d.kind);
-    const pp = PAPER_PRESETS.find((p) => p.id === d.preset);
-    const sizeName = pp ? tr(pp.name).replace(/（.*?）|\(.*?\)/g, '').trim() : `${toUnit(d.w)}×${toUnit(d.h)} ${S.settings.unit}`;
-    html = `<button class="btn primary big" data-act="create-doc"><span>${d.pages > 1 ? `创建 ${d.pages} 页${kind?.noun || '印刷文档'}` : `创建${kind?.noun || '印刷文档'}`}</span><span class="sub" data-notr>· ${esc(sizeName)} · ${tr('出血')} ${d.sidesOn ? '…' : toUnit(d.bleed) + ' ' + S.settings.unit}</span></button>`;
-  } else if (S.route === 'check') {
-    html = `<button class="btn primary big" data-act="route" data-v="export"><span>返回导出</span>${IC.arrow}</button>`;
-  } else {
-    const lab = exportLabel();
-    html = `<button class="btn primary big" data-act="export" ${!S.frames.length || S.busy ? 'disabled' : ''}><span>${lab.main}</span>${lab.sub ? `<span class="sub">· <span>${lab.sub}</span></span>` : ''}</button>`;
-  }
-  $('foot').hidden = !html;
-  $('foot').innerHTML = html;
-  translateDom($('foot'));
-}
-
-// ---------- routing of the main area ----------
-
-function viewMain(): string {
-  if (S.sheet === 'settings') return viewSettings();
-  if (S.sheet === 'resources') return viewColorResources();
-  if (S.sheet === 'transfer') return `${sheetHead('预设导入 / 导出')}<div class="settings-group"><p class="hint">包含印刷方案和颜色映射，不含 ICC 和色板。</p><div class="line"><button class="btn" data-act="import-json">导入 JSON</button><button class="btn" data-act="export-json">导出 JSON</button></div></div>`;
-  if (S.sheet === 'tools') return viewTools();
-  if (S.sheet === 'more') return viewMore();
-  if (S.sheet === 'imposition') return viewImposition();
-  if (S.sheet === 'profile') return viewProfile();
-  if (S.route === 'welcome') return viewWelcome();
-  if (S.route === 'prepare') return viewPrepare();
-  if (S.route === 'check') return viewCheck();
-  return viewExport();
-}
-
-const noSelection = (what: string) =>
-  `<div class="empty"><span>${what}</span><button class="btn" data-act="route" data-v="prepare">${IC.plus}<span>新建印刷画板</span></button></div>`;
-
-function viewSettings() {
-  return `${sheetHead('设置')}
-    <section class="settings-group"><h2>偏好</h2>
-      <div class="row"><label class="lbl" for="lang">界面语言</label>${langSelect()}</div>
-      <div class="row"><label class="lbl" for="setting-unit">尺寸单位</label>${sel('unit', [['mm', 'mm'], ['cm', 'cm'], ['in', 'in'], ['pt', 'pt']])}</div>
-      <div class="row"><span class="lbl">外观</span><span class="muted">跟随 Figma</span></div>
-    </section>
-    <section class="settings-group"><h2>资源管理</h2>
-      <button class="settings-link" data-act="sheet" data-v="profile"><span>印刷方案与 ICC</span>${IC.right}</button>
-      <button class="settings-link" data-act="sheet" data-v="resources"><span>色板与颜色映射</span>${IC.right}</button>
-      <button class="settings-link" data-act="sheet" data-v="transfer"><span>预设导入 / 导出</span>${IC.right}</button>
-    </section>
-    <details class="settings-help"><summary>关于与帮助</summary><p class="hint">Inkpaper 纸墨 · 全部在本机处理，不上传设计稿</p><a href="https://github.com/onevalar/figma-inkpaper#readme" target="_blank" rel="noopener noreferrer">使用说明</a></details>`;
-}
-
-// ---------- 01 welcome ----------
-
-function viewWelcome() {
-  return `<div style="display:flex;flex-direction:column;gap:12px;padding-top:14px">
-    <svg width="40" height="40" viewBox="0 0 44 44"><circle cx="22" cy="22" r="12" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="22" cy="22" r="6" fill="var(--accent)"/><path d="M22 2v40M2 22h40" stroke="currentColor" stroke-width="1.5"/></svg>
-    <h1 style="font-size:24px">把屏幕上的设计，<br>变成纸上的墨。</h1>
-    <p class="hint">准备 → 检查 → 导出</p>
-  </div>
-  <div class="section" style="gap:8px">
-    <h2>导入印刷厂的 ICC</h2>
-    ${
-      S.profiles.length
-        ? `<div class="well" style="display:flex;align-items:center;gap:8px">${IC.okCircle}<span class="grow" data-notr>${esc(S.profiles.map((p) => p.name).join('、'))}</span><button class="link" data-act="import-icc">再导入</button></div>`
-        : `<button class="drop" data-act="import-icc" id="icc-drop">${IC.upload}<span>拖入 .icc 文件，或点这里选择</span></button>`
-    }
-    <p class="hint xs">先跳过也可以，颜色会用近似算法换算</p>
-    <details class="settings-help"><summary>ICC 获取帮助</summary><p class="hint xs"><span>不知道用哪个？问印刷厂要，或从官网免费下载：</span> <a href="https://www.adobe.com/support/downloads/iccprofiles/iccprofiles_mac.html" target="_blank" data-notr>Adobe</a> · <a href="https://www.eci.org/en/downloads" target="_blank" data-notr>ECI</a></p></details>
-  </div>`;
-}
-
-// ---------- 02 prepare ----------
-
-const DOC_KINDS = [
-  { id: 'book', name: '画册 / 书刊', desc: 'A4 · 对页排列', noun: '画册', preset: 'a4', pages: 8, facing: true, fold: 'none', scale: 1, art: `<svg width="34" height="24" viewBox="0 0 34 24"><path d="M17 4c-4-2-9-2.5-15-2v20c6-.5 11 0 15 2 4-2 9-2.5 15-2V2c-6-.5-11 0-15 2z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/><path d="M17 4v20" stroke="currentColor" stroke-width="1.4"/></svg>` },
-  { id: 'card', name: '名片 / 卡片', desc: '90×54 mm', noun: '名片', preset: 'bc-cn', pages: 2, facing: false, fold: 'none', scale: 1, art: `<svg width="34" height="24" viewBox="0 0 34 24"><rect x="2" y="4" width="30" height="18" rx="2" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M7 11h10M7 15h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>` },
-  { id: 'poster', name: '海报 / 传单', desc: 'A2 · A3 · A5', noun: '海报', preset: 'a3', pages: 1, facing: false, fold: 'none', scale: 1, art: `<svg width="34" height="24" viewBox="0 0 34 24"><rect x="10" y="1" width="15" height="22" rx="1" stroke="currentColor" stroke-width="1.4" fill="none"/><circle cx="17.5" cy="9" r="3" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>` },
-  { id: 'fold', name: '折页', desc: '对折 · 三折 · 关门折', noun: '折页', preset: 'trifold-a4', pages: 2, facing: false, fold: 'tri', scale: 1, art: `<svg width="34" height="24" viewBox="0 0 34 24"><path d="M2 3l10 2v17L2 20zM12 5l10-2v17l-10 2zM22 3l10 2v17l-10-2z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/></svg>` },
-  { id: 'pack', name: '包装 / 吊牌', desc: '可生成纸盒刀版', noun: '吊牌', preset: 'hangtag', pages: 1, facing: false, fold: 'none', scale: 1, art: `<svg width="34" height="24" viewBox="0 0 34 24"><path d="M17 2l12 5v11l-12 5-12-5V7z M5 7l12 5 12-5 M17 12v11" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/></svg>` },
-  { id: 'big', name: '大幅喷绘', desc: '易拉宝 · 按 1:10 制作', noun: '喷绘', preset: 'rollup', pages: 1, facing: false, fold: 'none', scale: 10, art: `<svg width="34" height="24" viewBox="0 0 34 24"><rect x="11" y="1" width="12" height="19" rx="1" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M9 22h16M17 20v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>` },
-] as const;
-
-function presetOptions() {
-  const s = S.settings;
-  const d = s.doc;
-  const groups = new Map<string, typeof PAPER_PRESETS>();
-  for (const p of PAPER_PRESETS) groups.set(p.group, [...(groups.get(p.group) || []), p]);
-  return (
-    [...groups.entries()].map(([g, ps]) => `<optgroup label="${g}">${ps.map((p) => `<option value="${p.id}" ${d.preset === p.id ? 'selected' : ''}>${p.name}（${p.w}×${p.h}）</option>`).join('')}</optgroup>`).join('') +
-    (s.customPapers.length ? `<optgroup label="我的尺寸">${s.customPapers.map((p, i) => `<option value="custom:${i}" ${d.preset === 'custom:' + i ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>` : '') +
-    `<option value="custom" ${d.preset === 'custom' ? 'selected' : ''}>自定义尺寸…</option>`
-  );
-}
-
-function viewPrepare() {
-  const s = S.settings;
-  const d = s.doc;
-  const big = d.w * d.h > 1000 * 1400;
-  const noMeta = S.frames.filter((f) => !f.meta);
-  return `
-  <div style="display:flex;flex-direction:column;gap:4px"><h1>要做什么印刷品？</h1><p class="hint">选一个类型，自动带好出血、裁切线、安全区参考线</p></div>
-  <div class="picks">${DOC_KINDS.map((k) => `<button class="pick ${d.kind === k.id ? 'on' : ''}" data-act="doc-kind" data-v="${k.id}"><span style="color:${d.kind === k.id ? 'var(--accent)' : 'var(--fg)'}">${k.art}</span><span style="display:flex;flex-direction:column;gap:1px"><span class="t">${k.name}</span><span class="d">${k.desc}</span></span></button>`).join('')}</div>
-  <div class="section">
-    <div class="row"><span class="lbl">尺寸</span><select data-act="preset">${presetOptions()}</select>${segRaw('orient', d.landscape ? 'h' : 'v', [['v', '竖版'], ['h', '横版']])}</div>
-    ${d.preset === 'custom' || d.preset.startsWith('custom:') ? `<div class="row"><span class="lbl"></span>宽 ${num('doc.w', { min: 1, step: 0.5, unit: true })} 高 ${num('doc.h', { min: 1, step: 0.5, unit: true })}${U()}</div>` : ''}
-    <div class="row"><span class="lbl">页数</span><span class="stepper-n"><button data-act="pages" data-v="-1">−</button>${num('doc.pages', { min: 1, max: 400 })}<button data-act="pages" data-v="1">+</button></span>${d.kind === 'book' ? `<span class="muted xs">骑马钉需要 4 的倍数</span>` : ''}</div>
-    <div class="row"><span class="lbl">出血</span>${d.sidesOn ? sides4('doc.sides') : `${num('doc.bleed', { min: 0, step: 0.5, unit: true })}${U()}<span class="muted xs">安全区 ${toUnit(d.safety)} · 页边距 ${toUnit(d.margin)} ${s.unit}</span>`}</div>
-    ${big && d.scale === 1 ? `<p class="hint" style="color:var(--warn)">幅面较大，建议用 1:10 比例制作，避免 Figma 卡顿；导出时会自动放大回实际尺寸。</p>` : ''}
-    ${disclose('doc-more', S.docMore, '更多尺寸选项', '单位、页边距、四边出血、折页、比例、名称、保存常用尺寸')}
-    ${
-      S.docMore
-        ? `<div class="section" style="padding:8px 0 4px">
-      <div class="row"><span class="lbl">单位</span>${seg('unit', [['mm', 'mm'], ['cm', 'cm'], ['in', 'in'], ['pt', 'pt']])}</div>
-      <div class="row"><span class="lbl">宽 × 高</span>${num('doc.w', { min: 1, step: 0.5, unit: true })}×${num('doc.h', { min: 1, step: 0.5, unit: true })}${U()}</div>
-      <div class="row"><span class="lbl">页边距</span>${num('doc.margin', { min: 0, unit: true })}${U()}<span class="lbl" style="width:auto;padding-left:12px">安全区</span>${num('doc.safety', { min: 0, step: 0.5, unit: true })}${U()}</div>
-      <div class="row"><span class="lbl"></span>${chk('doc.sidesOn', '四边出血不同', '（如装订边不需要出血）')}</div>
-      <div class="row"><span class="lbl">折页</span>${sel('doc.fold', [['none', '无'], ['half', '对折'], ['tri', '三折（风琴/卷折）'], ['z', 'Z 字折'], ['gate', '关门折']])}</div>
-      <div class="row"><span class="lbl">制作比例</span>${sel('doc.scale', [[1, '1:1 实际尺寸'], [2, '1:2'], [4, '1:4'], [5, '1:5'], [10, '1:10（大幅喷绘）']], 'num')}</div>
-      <div class="row"><span class="lbl"></span>${chk('doc.facing', '对页排列（画册 / 书刊跨页）')}</div>
-      <div class="row"><span class="lbl">名称</span>${txt('doc.name')}</div>
-      <div class="row"><span class="lbl"></span><button class="btn small" data-act="save-paper">保存为常用尺寸</button></div>
-      <p class="hint xs">画板会包含出血区，并自动画出裁切线、安全区、折线参考线。按 ⌘⇧4（Windows：Ctrl+Shift+4）显示或隐藏参考网格。</p>
-    </div>`
-        : ''
-    }
-  </div>
-  <div class="divided" style="border-bottom:1px solid var(--line);margin-top:-18px">
-    <div class="tool-h" data-act="${noMeta.length ? 'convert-doc' : ''}" style="cursor:${noMeta.length ? 'pointer' : 'default'}"><span class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" stroke="currentColor" stroke-width="1.3" fill="none"/><rect x="1.5" y="1.5" width="13" height="13" stroke="currentColor" stroke-width="1.1" stroke-dasharray="2 2" fill="none"/></svg></span><span class="grow" style="display:flex;flex-direction:column"><span style="font-weight:500">已经做好了设计？给它加出血</span><span class="muted xs">${noMeta.length ? `点这里给选中的 ${noMeta.length} 个画板加出血，贴边的背景会自动延伸` : '在画布上选中画板，贴边的背景会自动延伸'}</span></span>${noMeta.length ? IC.right : ''}</div>
-    <div class="tool-h" style="cursor:default"><span class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="1.5" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M5 5.5h6M5 8h6M5 10.5h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span><span class="grow" style="display:flex;flex-direction:column"><span style="font-weight:500">一次建很多尺寸</span><span class="muted xs">CSV 每行：名称,宽,高,出血,页数（单位 ${UNIT_NAMES[s.unit]}）</span></span><button class="link" data-act="csv-import">导入 CSV</button><button class="link muted" data-act="csv-template">下载模板</button></div>
-  </div>`;
-}
-
-// ---------- 03 export ----------
-
-const IMP_ART: Record<ImpKind, string> = {
-  none: `<svg width="26" height="36" viewBox="0 0 26 36"><rect x="1" y="1" width="24" height="34" fill="var(--bg)" stroke="currentColor" stroke-width="1.2"/></svg>`,
-  spreads: `<svg width="50" height="36" viewBox="0 0 50 36"><rect x="1" y="1" width="24" height="34" fill="var(--bg)" stroke="currentColor" stroke-width="1.2"/><rect x="25" y="1" width="24" height="34" fill="var(--bg)" stroke="currentColor" stroke-width="1.2"/></svg>`,
-  booklet: `<svg width="50" height="36" viewBox="0 0 50 36"><rect x="1" y="1" width="24" height="34" fill="var(--bg)" stroke="currentColor" stroke-width="1.2"/><rect x="25" y="1" width="24" height="34" fill="var(--bg)" stroke="currentColor" stroke-width="1.2"/><path d="M25 1v34" stroke="currentColor" stroke-dasharray="2 2"/><text x="11" y="31" font-size="7" fill="currentColor">4</text><text x="35" y="31" font-size="7" fill="currentColor">1</text></svg>`,
-  nup: `<svg width="46" height="36" viewBox="0 0 46 36"><rect x="1" y="1" width="44" height="34" fill="var(--bg)" stroke="currentColor" stroke-width="1.2"/>${[0, 1, 2].map((r) => [0, 1, 2].map((c) => `<rect x="${5 + c * 13}" y="${5 + r * 9}" width="11" height="7" fill="currentColor" opacity=".5"/>`).join('')).join('')}</svg>`,
-  duplex: `<svg width="70" height="36" viewBox="0 0 70 36"><rect x="1" y="7" width="28" height="22" fill="var(--bg)" stroke="currentColor" stroke-width="1.2"/><rect x="41" y="7" width="28" height="22" fill="var(--bg)" stroke="currentColor" stroke-width="1.2"/><path d="M31 18h8M36 15l3 3-3 3" stroke="currentColor" fill="none"/><text x="11" y="21" font-size="7" fill="currentColor">A</text><text x="51" y="21" font-size="7" fill="currentColor">B</text></svg>`,
-};
 function impLabel(k: ImpKind): [string, string] {
   return ({ none: ['不拼版', '一页一个成品'], spreads: ['对页跨页', '画册校对用'], booklet: ['骑马钉画册', '自动排页，可从右往左'], nup: ['一版多拼', '名片、贴纸、卡片'], duplex: ['正反面拼版', '双面卡片，背面自动镜像'] } as Record<ImpKind, [string, string]>)[k];
 }
 
-function bleedShortCard() {
-  const s = S.settings;
-  const req = s.bleedSidesOn ? s.bleedSides : uniform(s.bleedMm);
-  const short = S.frames.filter((f) => {
-    if (!f.meta) return false;
-    const b = f.meta.bleedSides || uniform(f.meta.bleed);
-    return req.t > b.t + 0.01 || req.r > b.r + 0.01 || req.b > b.b + 0.01 || req.l > b.l + 0.01;
-  });
-  return short.length
-    ? `<div class="card warn" style="display:flex;flex-direction:column;gap:8px"><span class="sm">${short.length} 个画板做的出血比这里设置的少，导出时只能按画板实际的出血输出。</span><div><button class="btn small" data-act="convert-frames">为这些画板补足出血</button></div></div>`
-    : '';
-}
-
-function viewExport() {
-  const s = S.settings;
-  const frames = orderedFrames();
-  if (!frames.length) return noSelection('在画布上选择要导出的画板、编组或分区');
-  const isPdf = s.format === 'pdf';
-  const customized = !!S.password || [...MORE_KEYS, 'imp', 'regMarks', 'colorBars', 'author', 'subject', 'keywords'].some((k) => {
-    if (s.compression !== 'custom' && ['imageCompression', 'jpegQuality', 'maxPpi'].includes(k)) return false;
-    return JSON.stringify((s as any)[k]) !== JSON.stringify((DEFAULTS as any)[k]);
-  });
-  const first = frames[0];
-  const sz = frameSize(first);
-  const same = frames.every((f) => {
-    const z = frameSize(f);
-    return Math.abs(z.w - sz.w) < 0.5 && Math.abs(z.h - sz.h) < 0.5;
-  });
-  const preset = PAPER_PRESETS.find((p) => Math.abs(p.w - sz.w) < 0.6 && Math.abs(p.h - sz.h) < 0.6);
-  const sizeTxt = `${toUnit(sz.w)}×${toUnit(sz.h)} ${s.unit}`;
-  const pname = preset ? tr(preset.name).replace(/（.*?）|\(.*?\)/g, '').trim() : '';
-  const summary = !same ? '多种尺寸' : !preset ? sizeTxt : /\d×\d/.test(pname) ? `${pname} ${s.unit}` : `${pname} · ${sizeTxt}`;
-  const imp = s.imp;
-  const r = S.lastResult;
-  return `
-  <section class="pages-summary">
-    <div class="pages-compact">${S.thumbs[first.id] ? `<img data-thumb="${esc(first.id)}" src="${S.thumbs[first.id]}" alt="">` : ''}<div class="grow pages-copy"><b class="num">${frames.length} 页待导出</b><span class="muted xs" data-notr>${esc(summary === '多种尺寸' ? tr(summary) : summary)}</span></div><button class="link" data-act="pages-open" aria-expanded="${S.pagesOpen}" aria-controls="export-pages">${S.pagesOpen ? '收起页面' : '查看与排序'} ${IC.chev}</button></div>
-    ${S.pagesOpen ? `<div id="export-pages"><p class="hint xs">拖动排序，也可用前移、后移按钮调整。</p><div class="strip">${frames
-      .map(
-        (f, i) => `<div class="page" draggable="true" data-drag="${i}"><button class="page-select" data-act="select" data-v="${f.id}" title="${esc(f.name)}" data-notr><span class="pg">${S.thumbs[f.id] ? `<img data-thumb="${esc(f.id)}" src="${S.thumbs[f.id]}" alt="">` : ''}</span><span class="no num">${i + 1} · ${esc(f.name)}</span></button><div class="page-order"><button data-act="page-move" data-v="${f.id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} title="${tr('前移')}">‹</button><button data-act="page-move" data-v="${f.id}" data-dir="1" ${i === frames.length - 1 ? 'disabled' : ''} title="${tr('后移')}">›</button></div></div>`,
-      )
-      .join('')}</div></div>` : ''}
-  </section>
-  ${viewReadiness()}
-  <button class="profile" data-act="sheet" data-v="profile">${INKS}<span class="grow profile-copy"><span class="kicker">印刷方案</span><span class="name">${esc(tr(profileName() || '自定义'))}${profileDirty() ? ` <span class="muted xs" style="font-weight:400">${tr('（已修改）')}</span>` : ''}</span><span class="hint xs ${s.mode === 'cmyk' && !currentProfile() ? 'tag-warn' : ''}" data-notr>${esc(tr(s.mode === 'cmyk' ? currentProfile()?.name || '未选择 ICC，颜色仅能近似换算。' : s.mode === 'rgb' ? 'RGB' : '灰度'))}</span></span>${IC.right}</button>
-  <section class="section output-settings">
-    <h2>输出设置</h2>
-    <div class="row"><span class="lbl" id="format-label">格式</span><div role="group" aria-labelledby="format-label">${seg('format', [['pdf', 'PDF'], ['tiff', 'TIFF'], ['jpeg', 'JPEG'], ['png', 'PNG']])}</div></div>
-    ${!isPdf ? `<div class="row"><label class="lbl" for="setting-rasterDpi">分辨率</label>${sel('rasterDpi', [[150, '150 dpi'], [300, '300 dpi（标准印刷）'], [600, '600 dpi（细线、条码）'], [1200, '1200 dpi']], 'num')}</div><p class="hint xs">${s.format === 'png' ? 'PNG 只能是 RGB，适合数码快印。' : `${s.mode === 'cmyk' ? 'CMYK' : s.mode === 'gray' ? '灰度' : 'RGB'} 位图，内嵌 ICC 和 DPI，文字和矢量会变成像素。`}</p>` : ''}
-    <div class="row"><label class="lbl" ${s.bleedSidesOn ? '' : 'for="setting-bleedMm"'}>出血</label>${
-      s.bleedSidesOn
-        ? `<button class="link" data-act="sheet" data-v="more">${s.bleedSides.t}/${s.bleedSides.r}/${s.bleedSides.b}/${s.bleedSides.l} mm</button>`
-        : `${num('bleedMm', { min: 0, max: 20, step: 0.5, unit: true, w: 56 })}${U()}`
-    }${isPdf ? chk('cropMarks', '裁切线') : ''}</div>
-    ${bleedShortCard()}
-    <div class="row"><label class="lbl" for="setting-title">文件名</label><span data-notr class="grow" style="display:flex">${txt('title', S.fileName || '印刷文件')}</span><span class="muted xs">${isPdf ? '.pdf' : '.' + ({ tiff: 'tif', jpeg: 'jpg', png: 'png' } as Record<string, string>)[s.format]}</span></div>
-  </section>
-  <section class="advanced">
-    <button class="disclose ${s.advancedOpen ? 'open' : ''}" data-act="more-open" aria-expanded="${s.advancedOpen}" aria-controls="export-advanced"><span class="grow t">专业设置</span>${customized ? '<span class="tag-accent xs">已自定义</span>' : ''}${IC.chev}</button>
-    ${s.advancedOpen ? `<div id="export-advanced" class="section output-settings">
-      ${isPdf ? `<div class="row"><span class="lbl">拼版</span><button class="btn grow" data-act="sheet" data-v="imposition"><span class="grow">${impLabel(imp.kind)[0]}</span>${IC.right}</button></div>
-      <div class="row"><label class="lbl" for="setting-textOutline">文字</label>${sel('textOutline', [['perNode', '按图层设置'], ['none', '全部保留'], ['all', '全部转曲']])}</div>
-      <div class="row"><label class="lbl" for="setting-output">文件输出</label>${sel('output', [['merged', '合并为一个 PDF'], ['separate', '每页单独一个文件']])}</div>
-      <div class="row"><span class="lbl">印刷标记</span>${chk('regMarks', '套准')}${s.mode !== 'rgb' ? chk('colorBars', '色标条') : ''}</div>` : ''}
-      <div class="row"><label class="lbl" for="setting-compression">图片压缩</label>${sel('compression', [['light', '轻度'], ['balanced', '均衡'], ['strong', '强力'], ['custom', '自定义']])}</div>
-      <button class="btn" data-act="sheet" data-v="more">全部专业设置 ${IC.right}</button>
-    </div>` : ''}
-  </section>
-  ${
-    r
-      ? `${disclose('result', S.resultOpen, '上次导出结果', `共 ${r.files.length} 个文件`)}${
-          S.resultOpen
-            ? `<ul style="margin:-8px 0 0;padding-left:18px" class="sm">${r.reports
-                .map((p) => {
-                  const seg: string[] = [];
-                  if (p.flattened) seg.push('<span class="tag-warn">已整页拼合为图像</span>');
-                  else if (p.remainingRgb === 0 || s.mode === 'rgb') seg.push('<span class="tag-ok">颜色已全部转换</span>');
-                  else seg.push(`<span class="tag-warn">还有 ${p.remainingRgb} 处保持 RGB</span>`);
-                  if (p.images.length) seg.push(`<span>图片 ${p.images.length} 张</span>`);
-                  const down = p.images.filter((i) => i.newW).length;
-                  if (down) seg.push(`<span>${down} 张已降采样</span>`);
-                  if (p.hairlinesFixed) seg.push(`<span>加粗细线 ${p.hairlinesFixed} 处</span>`);
-                  if (p.spotsUsed.length) seg.push(`<span>专色：</span><span data-notr>${p.spotsUsed.map(esc).join(', ')}</span>`);
-                  for (const l of p.leftovers) seg.push(`<span class="tag-warn">${esc(l)}</span>`);
-                  return `<li><b data-notr style="font-weight:600">${esc(p.page)}</b> · ${seg.join(' · ')}</li>`;
-                })
-                .join('')}</ul>`
-            : ''
-        }`
-      : ''
-  }`;
-}
-
-// ---------- 04 more settings ----------
-
 const MORE_KEYS = ['bleedSidesOn', 'bleedSides', 'autoBleed', 'trimLine', 'markWeight', 'dielineMode', 'dielineNames', 'dielineFile', 'spotPolicy', 'keepSpots', 'textOutline', 'compression', 'imageCompression', 'jpegQuality', 'maxPpi', 'bookmarks', 'keepLinks', 'alsoDigital', 'output', 'scalePct'] as const;
-
-function viewMore() {
-  const s = S.settings;
-  const isPdf = s.format === 'pdf';
-  const spots = Object.values(s.overrides).filter((o) => o.spot);
-  const fin = Object.entries(s.colorFinishing);
-  const sect = (title: string, body: string) => `<div class="section" style="padding-bottom:6px;border-bottom:1px solid var(--line)"><span class="kicker" style="padding:10px 0 2px">${title}</span>${body}</div>`;
-  return `${sheetHead('专业设置', `<button class="link muted" data-act="more-reset">恢复默认</button>`)}
-  <div style="display:flex;flex-direction:column;margin-top:-18px">
-  ${sect(
-    '出血与标记',
-    `${tline('bleedSidesOn', '四边出血分别设置')}
-    ${s.bleedSidesOn ? `<div style="padding:2px 0 8px">${sides4('bleedSides')}</div>` : ''}
-    ${chk('autoBleed', '自动延伸未设出血画板的贴边元素', '（不修改设计稿）')}
-    ${isPdf ? tline('trimLine', '成品框线', '校对用，裁切位置画一圈细线') : ''}
-    ${isPdf ? `<div class="line"><span class="l">标记线宽</span>${num('markWeight', { min: 0.1, max: 1, step: 0.05, w: 64 })}<span class="unit">pt</span></div>` : ''}`,
-  )}
-  ${
-    s.mode !== 'rgb'
-      ? sect(
-          '刀版与专色',
-          `<div class="line"><span class="l">识别刀线和工艺</span>${seg('dielineMode', [['off', '关闭'], ['auto', '按图层名'], ['manual', '手动指定']])}</div>
-    ${s.dielineMode === 'manual' ? `<div class="line">${txt('dielineNames', '专色名，例如 CutContour, Kiss Cut')}</div>` : ''}
-    <details class="settings-help"><summary>刀线与工艺识别规则</summary><p class="hint xs">图层名以下面关键词开头的图层，会单独输出成对应的专色版，并自动叠印。刀线、折线、压痕、打孔会输出成真正的单线路径。也可以在「检查 → 颜色」里把某个颜色指定为刀线或工艺。</p><div class="divided">${DIELINE_KEYWORDS.map((d) => `<div class="line" style="min-height:28px"><span class="mono" style="width:110px;flex:none">${d.spot}</span><span class="muted xs ell" data-notr>${d.key.source.replace(/^\^\\\[\?\\s\*\(/, '').replace(/\)$/, '').replace(/\|/g, ' / ').replace(/\.\?/g, ' ')}</span></div>`).join('')}</div></details>
-    ${fin.length ? `<p class="hint xs" style="padding-bottom:4px">按颜色指定：<span data-notr>${fin.map(([hex, sp]) => `${hex} → ${esc(sp)}`).join('，')}</span></p>` : ''}
-    ${isPdf ? `<div class="line"><span class="l">刀版输出</span>${seg('dielineFile', [['inline', '随文件'], ['separate', '单独文件'], ['both', '两种都要']])}</div>` : ''}
-    <div class="line"><span class="l">专色</span>${seg('spotPolicy', [['preserve', '保留专色'], ['flatten', '转为四色'], ['keepListed', '只保留指定']])}</div>
-    ${s.spotPolicy === 'keepListed' ? `<div class="line">${txt('keepSpots', '专色名，用逗号分隔')}</div>` : ''}
-    ${spots.length ? `<p class="hint xs" style="padding-bottom:4px">当前专色：<span data-notr>${spots.map((o) => esc(o.spot!.name)).join('、')}</span></p>` : ''}`,
-        )
-      : ''
-  }
-  ${sect(
-    '文字与图片',
-    `${isPdf ? `<div class="line"><span class="l">文字</span>${seg('textOutline', [['none', '全部保留'], ['perNode', '按图层设置'], ['all', '全部转曲']])}</div>` : ''}
-    <div class="line"><span class="l">图片压缩</span>${seg('compression', [['light', '轻度'], ['balanced', '均衡'], ['strong', '强力'], ['custom', '自定义']])}</div>
-    ${
-      s.compression === 'custom'
-        ? `<div class="line"><span class="l">降采样</span>${sel('maxPpi', [[0, '不降采样'], [300, '超过 450ppi 降到 300ppi'], [450, '超过 675ppi 降到 450ppi'], [600, '超过 900ppi 降到 600ppi']], 'num')}</div>
-    <div class="line"><span class="l">编码</span>${sel('imageCompression', [['auto', '自动（照片 JPEG，图形无损）'], ['jpeg', '全部 JPEG'], ['lossless', '全部无损']])}</div>
-    ${s.imageCompression !== 'lossless' ? `<div class="line"><span class="l">JPEG 质量</span>${num('jpegQuality', { min: 50, max: 100 })}</div>` : ''}`
-        : `<p class="hint xs" style="padding-bottom:6px">${{ light: '图片几乎不压缩，质量最高', balanced: 'JPEG 90，超过 675ppi 的图片降到 450ppi', strong: 'JPEG 80，图片统一降到 300ppi，文件最小' }[s.compression]}</p>`
-    }`,
-  )}
-  ${
-    isPdf
-      ? sect(
-          '文件信息与安全',
-          `<div class="line" style="gap:18px">${chk('bookmarks', '每页书签')}${s.pdfx === 'none' || s.mode === 'rgb' ? chk('keepLinks', '保留超链接') : ''}</div>
-    <div class="line"><span style="width:64px" class="muted sm">作者</span>${txt('author')}</div>
-    <div class="line"><span style="width:64px" class="muted sm">主题</span>${txt('subject')}</div>
-    <div class="line"><span style="width:64px" class="muted sm">关键词</span>${txt('keywords', '用逗号分隔')}</div>
-    ${
-      s.pdfx === 'none' || s.mode === 'rgb'
-        ? `<div class="line"><span style="width:64px" class="muted sm">打开密码</span><input type="text" id="pdf-password" value="${esc(S.password)}" placeholder="留空则不加密"></div><p class="hint xs" style="padding-bottom:6px">AES-256 加密。密码不会被保存。</p>`
-        : `<div class="line"><span class="l">打开密码</span><span class="muted xs">PDF/X 不允许加密，需要密码请在印刷方案里改用普通 PDF</span></div>`
-    }`,
-        )
-      : ''
-  }
-  ${sect(
-    '附加输出',
-    `${isPdf && s.mode !== 'rgb' ? tline('alsoDigital', '同时导出 RGB 屏幕版', '无出血无标记，发给客户看') : ''}
-    <div class="line"><span class="l">${isPdf ? '每页单独一个文件' : '每页单独下载（不打包）'}</span><button class="toggle ${s.output === 'separate' ? 'on' : ''}" data-act="seg" data-path="output" data-v='"${s.output === 'separate' ? 'merged' : 'separate'}"'></button></div>
-    ${isPdf ? `<div class="line"><span class="l">输出缩放</span>${num('scalePct', { min: 10, max: 1000, step: 5, w: 64 })}<span class="unit">%</span></div>` : ''}`,
-  )}
-  </div>`;
-}
-
-// ---------- 05 imposition ----------
-
-function viewImposition() {
-  const s = S.settings;
-  const imp = s.imp;
-  const kinds: ImpKind[] = ['none', 'spreads', 'booklet', 'nup', 'duplex'];
-  const f = orderedFrames()[0];
-  let detail = '';
-  if (imp.kind === 'booklet') detail = `<div class="line"><span class="l">翻页方向</span>${seg('imp.rtl', [[false, '从左往右'], [true, '从右往左']])}</div><p class="hint xs">页数会补齐到 4 的倍数（空白页），按折页顺序排成正反面，双面打印后对折装订即可。从右往左适合竖排中文、日文、阿拉伯文。</p>`;
-  if (imp.kind === 'spreads') detail = `<p class="hint">第 1 页单独一页，之后两页一组排成跨页，方便整体校对。</p>`;
-  if (imp.kind === 'none') detail = `<p class="hint">每个画板单独一页输出。</p>`;
-  if ((imp.kind === 'nup' || imp.kind === 'duplex') && f) {
-    const g = nupGrid()!;
-    const n = orderedFrames().length;
-    const sheets = impSheets(n);
-    const scale = Math.min(104 / imp.sheetW, 148 / imp.sheetH);
-    const cells = Array.from({ length: g.per }, (_, i) => `<i style="display:block;width:${g.cw * scale}px;height:${g.ch * scale}px;background:var(--accent);opacity:.55"></i>`).join('');
-    detail = `<div style="display:flex;gap:16px">
-      <div style="width:132px;flex:none;display:flex;flex-direction:column;align-items:center;gap:6px"><div class="well" style="width:132px;height:180px;display:flex;align-items:center;justify-content:center;padding:0"><div style="width:${imp.sheetW * scale}px;height:${imp.sheetH * scale}px;background:var(--bg);box-shadow:0 1px 3px oklch(0 0 0 / .15);display:flex;align-items:center;justify-content:center"><div style="display:grid;grid-template-columns:repeat(${g.cols}, ${g.cw * scale}px);gap:${Math.max(1, imp.gutter * scale)}px">${cells}</div></div></div><span class="muted xs num">共 ${sheets} 张</span></div>
-      <div class="grow" style="display:flex;flex-direction:column">
-        <div class="line"><span class="l muted sm">印刷纸张</span>${sel('imp.sheet', [...SHEET_PRESETS.map((p) => [p.id, p.name] as [string, string]), ['custom', '自定义']])}</div>
-        ${imp.sheet === 'custom' ? `<div class="line"><span class="l muted sm">纸宽 × 高</span>${num('imp.sheetW', { min: 50, w: 56 })}×${num('imp.sheetH', { min: 50, w: 56 })}</div>` : ''}
-        <div class="line"><span class="l muted sm">每张排（0 = 自动）</span>${num('imp.cols', { min: 0, w: 46 })}×${num('imp.rows', { min: 0, w: 46 })}</div>
-        <div class="line"><span class="l muted sm">间距</span>${num('imp.gutter', { min: 0, step: 0.5, w: 56 })}<span class="unit">mm</span></div>
-        <div class="line"><span class="l muted sm">印数</span>${num('imp.copies', { min: 1, w: 56 })}<span class="unit">份</span></div>
-        ${imp.kind === 'nup' ? `<div class="line"><span class="l muted sm">同一成品铺满整版</span>${toggle('imp.repeat')}</div>` : ''}
-      </div></div>
-      <p class="hint xs"><span>每张 ${g.cols} × ${g.rows} = ${g.per} 个，共 ${sheets} 张，裁切线画在拼版外侧。</span> ${imp.kind === 'duplex' ? '<span>第 1、3、5… 页为正面，2、4、6… 页为反面；反面自动左右镜像，长边翻转后与正面对齐。</span>' : imp.repeat ? '' : '<span>按页序依次排。</span>'}</p>`;
-  }
-  return `${sheetHead('拼版方式', f ? `<span class="muted xs" data-notr>${esc(f.name)}</span>` : '')}
-  <div class="picks" style="margin-top:-6px">${kinds
-    .map((k) => `<button class="pick ${imp.kind === k ? 'on' : ''}" data-act="seg" data-path="imp.kind" data-v='"${k}"'><span class="art">${IMP_ART[k]}</span><span style="display:flex;flex-direction:column;gap:1px"><span class="t">${impLabel(k)[0]}</span><span class="d">${impLabel(k)[1]}</span></span></button>`)
-    .join('')}</div>
-  <div class="section" style="gap:8px">${detail}</div>`;
-}
-
-// ---------- 10 print profile ----------
-
-function viewProfile() {
-  const s = S.settings;
-  const prof = currentProfile();
-  const profOpts: [string, string][] = [['', S.profiles.length ? '— 选择 —' : '尚未导入 ICC'], ...S.profiles.map((p) => [p.id, p.name] as [string, string])];
-  const row = (id: string, name: string, desc: string, del = '') => {
-    const on = s.profileId === id;
-    return `<div class="${on ? '' : 'prow'}" style="border-bottom:1px solid var(--line);${on ? 'padding:12px 0' : ''}" ${on ? '' : `data-act="profile" data-v="${id}"`}>
-      <div style="display:flex;align-items:center;gap:10px" ${on ? '' : ''}><span class="radio ${on ? 'on' : ''}"></span><span class="grow" style="display:flex;flex-direction:column"><span style="font-weight:${on ? 600 : 500}" ${id.startsWith('user:') ? 'data-notr' : ''}>${esc(name)}${on && profileDirty() ? ` <span class="muted xs" style="font-weight:400">${tr('（已修改）')}</span>` : ''}</span><span class="muted xs">${desc}</span></span>${del}</div>
-      ${on ? profileDetails(profOpts, prof) : ''}</div>`;
-  };
-  return `${sheetHead('印刷方案', `<button class="link" data-act="import-json">导入</button><button class="link" data-act="export-json">导出</button>`)}
-  <p class="hint" style="margin-top:-8px">一个方案 = 印刷厂的一套要求。选好以后，颜色转换、黑色处理、PDF 标准都按它来，一般不用再改。</p>
-  <div style="margin-top:-8px">
-    ${BUILTIN_PROFILES.map((p) => row(p.id, tr(p.name), p.desc)).join('')}
-    ${S.presets.map((p, i) => row('user:' + i, p.name, '我的方案', `<button class="link muted" data-act="del-preset" data-v="${i}" title="删除">删除</button>`)).join('')}
-    ${!s.profileId ? `<div style="padding:12px 0;border-bottom:1px solid var(--line)"><div style="display:flex;align-items:center;gap:10px"><span class="radio on"></span><span style="font-weight:600">当前设置（自定义）</span></div>${profileDetails(profOpts, prof)}</div>` : ''}
-    <div class="line" style="min-height:48px">${IC.plus}<input type="text" id="preset-name" placeholder="把当前设置存为新方案，例如「某某印刷厂 · 铜版纸」"><button class="btn small" data-act="save-preset">保存</button></div>
-  </div>`;
-}
-
-function profileDetails(profOpts: [string, string][], prof: Profile | undefined) {
-  const s = S.settings;
-  const k = (t: string) => `<span class="kicker" style="padding:10px 0 2px">${t}</span>`;
-  return `<div style="display:flex;flex-direction:column;padding:6px 0 0 26px">
-    ${k('颜色')}
-    <div class="line"><span class="l">输出色彩</span>${seg('mode', [['cmyk', 'CMYK'], ['rgb', 'RGB'], ['gray', '灰度']])}</div>
-    ${
-      s.mode === 'cmyk'
-        ? `<div class="line"><span class="l" style="flex:none;width:96px">ICC 配置文件</span>${sel('iccId', profOpts)}<button class="link" data-act="import-icc">导入</button>${prof ? `<button class="link muted" data-act="del-icc">移除</button>` : ''}</div>
-    ${!S.profiles.length ? `<p class="hint xs">请导入印刷厂提供的 ICC 文件。国内胶印一般用 Japan Color 2001 Coated，欧洲用 FOGRA39 / PSO Coated v3，北美用 GRACoL / SWOP。可从 <a href="https://www.adobe.com/support/downloads/iccprofiles/iccprofiles_mac.html" target="_blank">Adobe</a> / <a href="https://www.eci.org/en/downloads" target="_blank">ECI</a> 免费下载。</p>` : ''}
-    <div class="line"><span class="l">渲染意图</span>${sel('intent', [[1, '相对比色（推荐）'], [0, '可感知（照片多时更顺滑）'], [2, '饱和度（图表、色块）'], [3, '绝对比色（模拟纸白）']], 'num')}</div>
-    <div class="line">${chk('bpc', '黑场补偿', '（保留暗部层次）')}</div>
-    ${k('黑色与墨量')}
-    <div class="line">${chk('pureBlackToK', '纯黑只用 K 版', '（小字不发虚）')}</div>
-    <div class="line">${chk('grayToK', '灰色只用 K 版', '（灰字更干净）')}</div>
-    <div class="line">${chk('richBlackOn', '大面积黑色用四色黑', '（≥1cm 色块，文字不受影响）')}</div>
-    ${
-      s.richBlackOn
-        ? `<div class="line" style="padding-left:24px">${sel('richPreset', [...Object.entries(RICH_PRESETS).map(([key, v]) => [key, v[0]] as [string, string]), ['custom', '自定义']])}</div>
-    <div class="line" style="padding-left:24px;gap:6px" data-notr>C${num('richBlack.c', { min: 0, max: 100, w: 48 })}M${num('richBlack.m', { min: 0, max: 100, w: 48 })}Y${num('richBlack.y', { min: 0, max: 100, w: 48 })}K${num('richBlack.k', { min: 0, max: 100, w: 48 })}</div>`
-        : ''
-    }
-    <div class="line"><span class="l">总墨量上限</span>${num('tacLimit', { min: 0, max: 400, step: 10, w: 64 })}<span class="unit">%</span></div>
-    <p class="hint xs">铜版纸常用 320，胶版纸 280–300，报纸 240；0 = 不限制。</p>`
-        : `<p class="hint xs">${s.mode === 'gray' ? '所有颜色和图片会转成单色灰度（只用黑色油墨），适合黑白印刷。' : '保持 RGB 颜色，适合数码快印或屏幕阅读。出血、裁切线等功能照常可用。'}</p>`
-    }
-    ${k('输出')}
-    ${s.mode !== 'rgb' ? `<div class="line"><span class="l">PDF 标准</span>${sel('pdfx', [['x4', 'PDF/X-4（推荐，支持透明）'], ['x1a', 'PDF/X-1a（老设备、报纸常用）'], ['x3', 'PDF/X-3'], ['none', '普通 PDF']])}</div>` : ''}
-    ${(s.pdfx === 'x1a' || s.pdfx === 'x3') && s.mode !== 'rgb' ? `<div class="line"><span class="l">透明拼合精度</span>${sel('flattenDpi', [[300, '300 dpi'], [450, '450 dpi'], [600, '600 dpi（小字更清晰）']], 'num')}</div><p class="hint xs">X-1a / X-3 不允许透明。含阴影、半透明、混合模式的页面会整页转成图像，其余页面保持矢量。</p>` : ''}
-    <div class="line">${chk('minStrokeOn', '细线自动加粗')}<span class="grow"></span>${num('minStrokePt', { min: 0, max: 2, step: 0.05, w: 64 })}<span class="unit">pt</span></div>
-    ${s.mode === 'cmyk' ? `<div class="line">${chk('overprintBlack', '100% 黑色自动叠印', '（防止黑字周围露白）')}</div><div class="line">${chk('removeWhiteOverprint', '去掉白色对象的叠印', '（否则白色会消失）')}</div>` : ''}
-  </div>`;
-}
-
-// ---------- 06–09 check ----------
-
-const CAT_NAMES: Record<string, string> = { geometry: '出血与版面', color: '颜色与墨量', resolution: '图片分辨率', transparency: '透明效果', text: '文字与字体', annotation: '注释', spot: '专色与刀版' };
-
-function viewCheck() {
-  if (!S.frames.length) return noSelection('在画布上选择要检查的画板');
-  const is = currentIssues();
-  const nIss = is ? is.filter((i) => i.level === 'error' || i.level === 'warning').length : 0;
-  const tabs: [CheckTab, string][] = [
-    ['issues', `问题${nIss ? ` <b class="num" style="color:var(--warn);font-weight:600">${nIss}</b>` : ''}`],
-    ['preview', '印刷预览'],
-    ['colors', `颜色${S.colors ? ` <span class="muted num">${S.colors.length}</span>` : ''}`],
-    ['text', `文字${S.texts ? ` <span class="muted num">${S.texts.length}</span>` : ''}`],
-  ];
-  const body = { issues: viewIssues, preview: viewPreview, colors: viewColors, text: viewText }[S.checkTab]();
-  return `<div class="view-heading"><h1>检查印刷质量</h1><p class="hint">先了解影响，再决定如何处理。</p></div><div class="seg full" role="group" aria-label="${tr('检查内容')}">${tabs.map(([v, l]) => `<button data-act="ctab" data-v="${v}" aria-pressed="${S.checkTab === v}" class="${S.checkTab === v ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
-}
-
-function viewIssues() {
-  const s = S.settings;
-  const is = currentIssues();
-  if (!is) return `<section class="quality"><div class="grow"><h2>${S.pendingIssuesKey === checkKey() ? '正在检查…' : S.checkError ? '检查未完成，请重试' : '需要更新检查结果'}</h2><p class="hint">${S.checkError ? esc(S.checkError) : '旧结果不再作为当前导出的依据。'}</p></div>${S.pendingIssuesKey === checkKey() ? '' : '<button class="btn" data-act="preflight">重新检查</button>'}</section>${viewCheckStandards()}`;
-  const list = is.filter((i) => i.level !== 'pass');
-  const count = (l: string) => list.filter((i) => i.level === l).length;
-  const err = count('error'),
-    warn = count('warning'),
-    info = count('info');
-  const fixable = list.filter((i) => i.fix && (i.fix.startsWith('k100:') || i.fix === 'removeWhiteOverprint' || (i.fix === 'autoBleed' && !s.autoBleed)));
-  const order = { error: 0, warning: 1, info: 2, pass: 3 } as Record<string, number>;
-  return `
-  <div class="section-title"><div class="grow"><h2>${err || warn ? `${err + warn} 项风险需要处理或确认` : '检查完成，未发现已知风险'}</h2><p class="hint xs">${err} 个错误 · ${warn} 个提醒 · ${info} 个提示</p></div><button class="btn" data-act="preflight">重新检查</button></div>
-  ${fixable.length ? `<div><button class="btn" data-act="fix-all">全部修复</button><span class="muted xs"> · 仅调整导出设置</span></div>` : ''}
-  ${
-    list.length
-      ? `<div class="issue-list">${list
-          .sort((a, b) => order[a.level] - order[b.level])
-          .map(
-            (i) => `<article class="issue-card"><div class="section-title"><h2>${CAT_NAMES[i.cat] || '提示'}</h2><span class="issue-level ${i.level}">${{ error: '错误', warning: '风险', info: '提示', pass: '通过' }[i.level]}</span></div><p class="msg">${esc(i.msg)}</p>${i.frame ? `<p class="hint xs" data-notr>${esc(i.frame)}</p>` : ''}<div class="issue-actions">${fixButton(i)}${i.nodeId ? `<button class="link" data-act="select" data-v="${i.nodeId}">在画布上定位</button>` : ''}</div>${i.fix ? `<p class="hint xs">${i.fix === 'upscale' ? '替换或放大图片会修改原稿；放大不会补回缺失的细节。' : '仅调整导出设置，不修改设计稿。'}</p>` : ''}</article>`,
-          )
-          .join('')}</div>`
-      : `<div class="quality ok"><span class="dot ok"></span><p class="hint">检查有范围，送印前请核对印刷厂要求。</p></div>`
-  }
-  <p class="hint xs">检查是最近一次快照，改稿后请重新检查。</p>
-  ${disclose('pass-open', S.passOpen, '检查范围与图片', '出血、版面、图片、文字及部分颜色问题')}
-  ${
-    S.passOpen && S.images.length
-      ? `<div class="divided" style="margin-top:-14px">${S.images.map((im) => `<div class="line" data-act="select" data-v="${im.id}" style="cursor:pointer"><span class="l ell" data-notr>${esc(im.name)}</span><span class="muted mono">${im.px}</span><span class="${im.ppi >= s.minPpi ? 'tag-ok' : 'tag-warn'} sm num" style="width:64px;text-align:right">${im.ppi} ppi</span></div>`).join('')}</div>`
-      : ''
-  }
-  ${viewCheckStandards()}`;
-}
-
-function viewCheckStandards() {
-  const s = S.settings;
-  return `<div class="well" style="display:flex;flex-direction:column;gap:6px">
-    <div style="display:flex;align-items:center;gap:8px"><span class="muted xs grow">检查标准：图片 ≥ ${s.minPpi} ppi · 线条 ≥ ${s.minStrokePt} pt · 字号 ≥ ${s.minTextPt} pt</span><button class="link" data-act="std-open">${S.stdOpen ? '收起' : '修改'}</button></div>
-    ${
-      S.stdOpen
-        ? `<div class="line"><label class="l sm" for="setting-minPpi">最低分辨率</label>${num('minPpi', { min: 72, max: 600, step: 10 })}<span class="unit">ppi</span></div>
-    <div class="line"><label class="l sm" for="setting-minStrokePt">最细线条</label>${num('minStrokePt', { min: 0, max: 2, step: 0.05 })}<span class="unit">pt</span></div>
-    <div class="line"><label class="l sm" for="setting-minTextPt">最小字号</label>${num('minTextPt', { min: 3, max: 12, step: 0.5 })}<span class="unit">pt</span></div>
-    ${chk('blockLowPpi', '有图片低于最低分辨率时，禁止导出')}
-    <div><button class="btn small" data-act="preflight">按新标准重新检查</button></div>`
-        : ''
-    }
-  </div>`;
-}
-
-function fixButton(i: Issue) {
-  if (!i.fix) return '';
-  if (i.fix === 'icc') return `<button class="btn" data-act="sheet" data-v="profile">选择颜色配置</button>`;
-  if (i.fix.startsWith('k100:')) return `<button class="btn small" data-act="fix-k100" data-v="${i.fix.slice(5)}">改为单色黑</button>`;
-  if (i.fix === 'upscale' && i.nodeId) return `<button class="btn small" data-act="upscale" data-v="${i.nodeId}">放大 2 倍</button><button class="link muted" data-act="replace-image" data-v="${i.nodeId}">替换图片</button>`;
-  if (i.fix === 'autoBleed') return S.settings.autoBleed ? `<span class="muted xs">导出时自动延伸</span>` : `<button class="btn small" data-act="tg" data-path="autoBleed">导出时自动加出血</button>`;
-  if (i.fix === 'removeWhiteOverprint') return `<button class="btn small" data-act="fix-white">去掉叠印</button>`;
-  return '';
-}
 
 function colorIssues(): Issue[] {
   const out: Issue[] = [];
@@ -1395,29 +771,6 @@ function colorIssues(): Issue[] {
   return out;
 }
 
-function viewPreview() {
-  const p = S.preview;
-  const frames = orderedFrames();
-  const idx = Math.min(S.previewIdx, frames.length - 1);
-  const st = p?.data?.stats;
-  if (!p || p.id !== frames[idx]?.id) return `<div class="empty">正在生成预览…</div>`;
-  const chip = (mode: string, label: string) => `<button class="chip ${p.mode === mode ? 'on' : ''}" data-act="pv-mode" data-v="${mode}">${label}</button>`;
-  const plate = (m: string, bg: string, fg = '#fff') => `<button class="plate" data-act="pv-mode" data-v="${m}" style="background:${bg};color:${fg};border:0;cursor:pointer;${p.mode === m ? 'box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--accent)' : ''}">${m.toUpperCase()}</button>`;
-  return `
-  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${chip('split', '对比')}${chip('proof', '印刷效果')}${chip('original', '原稿')}<span class="chip ${'cmyk'.includes(p.mode) && p.mode.length === 1 ? 'on' : ''}" style="padding-right:4px;cursor:default"><span>分色</span>${plate('c', '#00A0E9')}${plate('m', '#E5007D')}${plate('y', '#FFE100', '#1d1d1f')}${plate('k', '#1d1d1f').replace('border:0', 'border:1px solid var(--fg3)')}</span>${chip('tac', '墨量')}${chip('gamut', '超色域')}</div>
-  <div class="pv">${p.mode === 'split' ? `<span class="lab" style="left:12px">原稿</span><span class="lab" style="right:12px">印出来的样子</span>` : ''}<canvas id="pv-canvas"></canvas>
-    <div class="pager"><button data-act="pv-page" data-v="-1" ${idx <= 0 ? 'disabled' : ''}>‹</button><span class="num" data-notr>${idx + 1} / ${frames.length}</span><button data-act="pv-page" data-v="1" ${idx >= frames.length - 1 ? 'disabled' : ''}>›</button></div></div>
-  ${p.mode === 'split' ? `<input type="range" min="0" max="100" value="${Math.round(p.split * 100)}" data-act="pv-split" style="width:100%;margin-top:-10px">` : ''}
-  ${
-    st
-      ? `<div class="stats rule" style="border-bottom:1px solid var(--line)"><div><span class="muted xs">最大墨量</span><b class="${st.tacMax > S.settings.tacLimit ? 'tag-err' : ''}">${st.tacMax}%</b></div><div><span class="muted xs">超墨量面积</span><b class="${st.tacOver > 0 ? 'tag-warn' : ''}">${(st.tacOver * 100).toFixed(1)}%</b></div><div><span class="muted xs">超色域面积</span><b class="${st.gamutOut > 0.02 ? 'tag-warn' : ''}">${(st.gamutOut * 100).toFixed(1)}%</b></div></div>`
-      : ''
-  }
-  <div class="line" style="margin-top:-8px"><span class="l">模拟纸张白</span><span class="muted xs">纸张略偏暖，白色不是纯白</span><button class="toggle ${p.paper ? 'on' : ''}" data-act="pv-paper"></button></div>
-  ${S.settings.mode !== 'cmyk' ? `<p class="hint">当前印刷方案是 ${S.settings.mode === 'rgb' ? 'RGB' : '灰度'}，印刷模拟仅在 CMYK 下有意义。</p>` : ''}
-  <p class="hint xs">“墨量”里红色区域超过总墨量上限（导出时会自动压到上限）；“超色域”里标出的区域印刷时会明显变灰、变暗。</p>`;
-}
-
 function paintPreview() {
   const p = S.preview;
   const cv = document.getElementById('pv-canvas') as HTMLCanvasElement | null;
@@ -1429,156 +782,6 @@ function paintPreview() {
   }
   paint(cv, p.data, p.mode, p.split, S.settings.tacLimit);
 }
-
-function viewColors() {
-  const s = S.settings;
-  if (s.mode !== 'cmyk') return `<div class="empty"><span>当前印刷方案是 ${s.mode === 'rgb' ? 'RGB' : '灰度'}，颜色映射、专色和总墨量只在 CMYK 下生效。</span><button class="btn" data-act="sheet" data-v="profile">更换印刷方案</button></div>`;
-  if (!S.colors) return `<div class="empty">正在扫描颜色…</div>`;
-  const rows = S.colors
-    .map((c) => {
-      const { c: cm, kind } = cmykFor(c.hex);
-      const ov = s.overrides[c.hex];
-      const proof = engine && kind !== 'finish' ? engine.proofHex(cm) : c.hex;
-      const [r, g, b] = hexToRgb(c.hex);
-      const de = engine && kind === 'icc' ? engine.gamutDeltaE(r, g, b, cm) : 0;
-      const val = kind === 'finish' ? esc(s.colorFinishing[c.hex]) : kind === 'spot' ? esc(ov!.spot!.name) : `<span class="mono">${[cm.c, cm.m, cm.y, cm.k].map((x) => Math.round(x)).join(' ')}</span>`;
-      let tag = '';
-      if (kind === 'finish') tag = `<span class="tag-info">工艺</span>`;
-      else if (kind === 'spot') tag = `<span class="tag-accent">专色${ov?.overprint ? ' · 叠印' : ''}</span>`;
-      else if (kind === 'custom') tag = `<span>自定义${ov?.overprint ? ' · 叠印' : ''}</span>`;
-      else if (de > 10) tag = `<span class="tag-warn">超色域</span>`;
-      else if (cm.c === 0 && cm.m === 0 && cm.y === 0 && cm.k > 0) tag = `<span class="tag-ok">${cm.k >= 99.5 ? '单色黑' : '只用 K'}</span>`;
-      else if (s.tacLimit && tac(cm) > s.tacLimit + 0.5) tag = `<span class="tag-warn">墨量 ${Math.round(tac(cm))}%</span>`;
-      else if (ov?.overprint) tag = `<span>叠印</span>`;
-      const open = S.expanded === c.hex;
-      return `<div class="cgroup ${open ? 'open' : ''}"><div class="crow" data-act="expand" data-v="${c.hex}"><span class="sw2"><i style="background:${c.hex}" title="设计稿颜色"></i><i style="background:${proof}" title="印刷效果预览"></i></span><span class="grow" style="display:flex;flex-direction:column;min-width:0"><span class="mono">${c.hex}</span>${c.names?.length ? `<span class="muted xs ell" data-notr>${esc(c.names[0])}</span>` : ''}</span><span class="val ell" data-notr>${val}</span><span class="tag">${tag}</span><span class="cnt num">×${c.count}</span></div>${open ? colorEditor(c) : ''}</div>`;
-    })
-    .join('');
-  return `
-  <div class="line" style="margin-top:-6px"><span class="muted sm l">${S.colors.length} 种颜色，默认按印刷方案自动转换，点开可单独调整</span><button class="btn small" data-act="scan-colors">重新扫描</button></div>
-  ${S.colors.length ? `<div class="divided rule" style="border-bottom:1px solid var(--line);margin-top:-10px">${rows}</div>` : `<div class="empty">没有找到颜色</div>`}
-  <button class="settings-link" data-act="sheet" data-v="resources"><span>色板与颜色映射</span>${IC.right}</button>`;
-}
-
-function viewColorResources() {
-  const s = S.settings;
-  const cur = allMaps().find((m) => m.name === s.activeMap);
-  const dirty = s.activeMap && JSON.stringify(cur?.overrides || {}) !== JSON.stringify(s.overrides);
-  return `${sheetHead('色板与颜色映射')}
-    <section class="settings-group"><h2>颜色映射表</h2>
-      ${s.activeMap ? `<p class="hint" data-notr>${esc(s.activeMap)}${dirty ? ` ${tr('（未保存）')}` : ''}</p>` : ''}
-      <div class="line"><label class="sm" for="map-select">应用</label><select id="map-select" data-act="load-map"><option value="">— 不使用 —</option>${allMaps().map((m) => `<option ${m.name === s.activeMap ? 'selected' : ''}>${esc(m.name)}${m.file ? '（本文件）' : ''}</option>`).join('')}</select>${s.activeMap ? '<button class="link muted" data-act="del-map">删除</button>' : ''}</div>
-      <div class="line"><label class="sm" for="map-name">名称</label><input type="text" id="map-name" placeholder="映射表名称，例如：品牌色 2026" value="${esc(s.activeMap)}"><button class="btn small" data-act="save-map">保存</button></div>
-      ${chk('mapsInFile', '保存到当前 Figma 文件', '（团队成员打开同一文件都能用）')}
-    </section>
-    <section class="settings-group"><h2>色板库</h2><p class="hint">${S.lib.length ? `已导入 ${S.lib.length} 个色板` : '可导入潘通 / RAL / HKS 色板（.ase 或 CSV）'}</p><div class="line"><button class="btn" data-act="import-lib">导入</button>${S.lib.length ? '<button class="link muted" data-act="clear-lib">清空</button>' : ''}</div></section>`;
-}
-
-function colorEditor(c: ScannedColor) {
-  const s = S.settings;
-  const ov = s.overrides[c.hex];
-  const kind = s.colorFinishing[c.hex] ? 'finish' : ov?.spot ? 'spot' : ov?.cmyk ? 'custom' : 'icc';
-  const COL: Record<string, string> = { c: '#00A0E9', m: '#E5007D', y: '#C9A800', k: 'var(--fg)' };
-  const slider = (k: keyof CMYK, v: number) =>
-    `<div class="slider"><b style="color:${COL[k]}">${k.toUpperCase()}</b><input type="range" min="0" max="100" step="1" value="${v}" data-act="cmyk" data-hex="${c.hex}" data-k="${k}"><input type="number" min="0" max="100" value="${Math.round(v)}" data-act="cmyk" data-hex="${c.hex}" data-k="${k}"></div>`;
-  const [r, g, b] = hexToRgb(c.hex);
-  const icc = engine ? engine.iccCmyk(r, g, b) : { c: 0, m: 0, y: 0, k: 0 };
-  const de = engine ? engine.gamutDeltaE(r, g, b, icc) : 0;
-  return `<div class="cedit" data-stop="1">
-    ${segRaw('ckind', kind, [['icc', '按方案'], ['custom', '自定义 CMYK'], ['spot', '专色'], ['finish', '刀线 / 工艺']], 'full').replace(/data-act="ckind"/g, `data-act="ckind" data-hex="${c.hex}"`)}
-    ${kind === 'icc' ? `<p class="hint xs"><span>按方案换算</span> <span data-notr class="mono">${fmtC(icc)} · TAC ${Math.round(tac(icc))}% · ΔE ${de.toFixed(1)}</span> <span>${de > 10 ? '超出印刷色域，会偏灰' : de > 5 ? '略有偏差' : '准确'}</span>${c.inGradient ? ' <span>这个颜色用在渐变里。</span>' : ''}</p>` : ''}
-    ${kind === 'custom' ? `<div class="sliders">${(['c', 'm', 'y', 'k'] as const).map((k) => slider(k, ov!.cmyk![k])).join('')}</div>` : ''}
-    ${
-      kind === 'spot'
-        ? `<div class="line"><span class="sm" style="width:64px">专色名称</span><input type="text" list="spot-lib" data-act="spotname" data-hex="${c.hex}" value="${esc(ov!.spot!.name)}" placeholder="例如 PANTONE 186 C">${S.lib.length ? `<button class="link" data-act="nearest-spot" data-hex="${c.hex}">找最接近的</button>` : ''}</div>
-    <div class="line"><span class="sm" style="width:64px">浓度</span><input type="range" min="1" max="100" value="${ov!.spot!.tint}" data-act="tint" data-hex="${c.hex}" style="flex:1"><span class="mono">${ov!.spot!.tint}%</span></div>
-    <p class="hint xs">专色的 CMYK 替代值（屏幕预览和“转为四色”时使用）：</p>
-    <div class="sliders">${(['c', 'm', 'y', 'k'] as const).map((k) => slider(k, ov!.spot!.alt[k])).join('')}</div>
-    ${c.inGradient ? '<p class="hint xs" style="color:var(--warn)">注意：渐变里的专色无法单独成版，会按 CMYK 替代值输出。</p>' : ''}`
-        : ''
-    }
-    ${
-      kind === 'finish'
-        ? `<div class="line"><span class="sm" style="width:64px">工艺版</span><select data-act="finish-name" data-hex="${c.hex}">${DIELINE_KEYWORDS.map((d) => `<option ${s.colorFinishing[c.hex] === d.spot ? 'selected' : ''}>${d.spot}</option>`).join('')}</select></div>
-    <p class="hint xs">用这个颜色的描边会输出成单线刀线 / 折线（叠印），填充会输出成对应的工艺专色版（光油、白墨、烫金等），不会印成颜色。</p>`
-        : ''
-    }
-    <div class="line" style="min-height:28px">${kind !== 'finish' ? `<label class="chk sm" style="min-height:0"><input type="checkbox" data-act="overprint" data-hex="${c.hex}" ${ov?.overprint ? 'checked' : ''}>叠印</label>` : ''}<span class="grow"></span>${ov || kind === 'finish' ? `<button class="link muted" data-act="reset-color" data-hex="${c.hex}">恢复默认</button>` : ''}</div>
-    <datalist id="spot-lib">${S.lib.slice(0, 3000).map((l) => `<option value="${esc(l.name)}">`).join('')}</datalist>
-  </div>`;
-}
-
-function viewText() {
-  const s = S.settings;
-  const t = S.texts;
-  if (!t) return `<div class="empty">正在扫描文字…</div>`;
-  const def = s.textOutline === 'none' ? 'none' : s.textOutline === 'all' ? 'all' : 'perNode';
-  const missingFonts = t.filter((n) => n.missingFont).length;
-  const sorted = [...t].sort((a, b) => +(b.missingFont || b.hasEffects) - +(a.missingFont || a.hasEffects));
-  return `
-  <div class="section" style="gap:8px">
-    <span class="muted sm">导出时文字怎么处理</span>
-    ${segRaw('tdefault', def, [['none', '全部保留文字'], ['perNode', '按图层设置'], ['all', '全部转曲']], 'full')}
-    <p class="hint xs"><span>保留文字：PDF 里能选中、搜索（含中文）。转曲：变成图形，任何印刷机都不会缺字体。</span>${def === 'perNode' ? ' <span>下面可以逐个图层设置。</span>' : ''}</p>
-    ${def === 'perNode' && t.length ? `<div style="display:flex;gap:12px"><button class="link" data-act="tall" data-v="live-noeff">有效果的转曲，其余保留</button></div>` : ''}
-  </div>
-  ${missingFonts ? `<div class="card warn sm">有 ${missingFonts} 个文字图层缺少字体，请先在 Figma 中安装或替换字体，否则导出的字形会被替换。</div>` : ''}
-  ${
-    t.length
-      ? `<div class="divided rule" style="border-bottom:1px solid var(--line);margin-top:-6px">${sorted
-          .map((n) => {
-            const mode = def === 'perNode' ? n.mode : def === 'all' ? 'outline' : 'live';
-            return `<div class="trow"><span class="grow" data-act="select" data-v="${n.id}" style="cursor:pointer;display:flex;flex-direction:column;min-width:0"><span class="ell" style="font-weight:500" data-notr>${esc(n.preview || n.name)}</span><span class="muted xs ell"><span data-notr>${esc(n.fonts.join('、'))} · ${n.size} pt · ${esc(n.frame)}</span></span></span><span style="width:52px;flex:none" class="xs">${n.missingFont ? '<span class="tag-err">缺字体</span>' : n.hasEffects ? '<span class="tag-warn">有效果</span>' : ''}</span><div class="seg" style="${def === 'perNode' ? '' : 'opacity:.5'}"><button data-act="tmode" data-v="${n.id}" data-m="live" class="${mode === 'live' ? 'on' : ''}">文字</button><button data-act="tmode" data-v="${n.id}" data-m="outline" class="${mode === 'outline' ? 'on' : ''}">转曲</button></div></div>`;
-          })
-          .join('')}</div>`
-      : `<div class="empty">没有文字图层</div>`
-  }`;
-}
-
-// ---------- 11 toolbox ----------
-
-function viewTools() {
-  const s = S.settings;
-  const m = S.measure;
-  const pickHex = engine ? engine.proofHex(s.pick) : '#ccc';
-  const tool = (id: string, icon: string, title: string, desc: string, body: () => string) => {
-    const open = S.toolOpen === id;
-    return `<div class="tool"><button class="tool-h" data-act="tool" data-v="${id}" aria-expanded="${open}" aria-controls="tool-${id}"><span class="ic">${icon}</span><span class="grow">${title}</span>${IC.chev.replace('class="chev"', `class="chev ${open ? 'open' : ''}"`)}</button>${open ? `<div class="tool-b" id="tool-${id}"><p class="hint xs">${desc}</p>${body()}</div>` : ''}</div>`;
-  };
-  const measure = m.length
-    ? m
-        .slice(0, 4)
-        .map(
-          (n) => `<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:8px;align-items:baseline"><b class="grow ell" style="font-weight:600" data-notr>${esc(n.name)}</b><span class="muted xs">${n.type}</span></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${mbox('宽', 'w', n.id, toUnit((n.w * 25.4) / 72), S.settings.unit)}${mbox('高', 'h', n.id, toUnit((n.h * 25.4) / 72), S.settings.unit)}
-        ${n.fontSize !== undefined ? mbox('字号', 'fontSize', n.id, n.fontSize, 'pt') : ''}${n.strokeWeight !== undefined ? mbox('描边', 'strokeWeight', n.id, n.strokeWeight, 'pt') : ''}${n.cornerRadius !== undefined ? mbox('圆角', 'cornerRadius', n.id, toUnit((n.cornerRadius * 25.4) / 72), S.settings.unit) : ''}
-      </div></div>`,
-        )
-        .join('<div class="rule"></div>')
-    : `<p class="hint">在画布上选中任意图层，这里会显示它的实际尺寸，可以直接改。</p>`;
-  return `${sheetHead('画布工具', seg('unit', [['mm', 'mm'], ['cm', 'cm'], ['in', 'in'], ['pt', 'pt']]))}
-  <p class="hint xs">直接修改画布上的图层</p>
-  ${tool('measure', '<svg width="18" height="18" viewBox="0 0 18 18"><rect x="1.5" y="5.5" width="15" height="7" rx="1" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M4.5 5.5v3M7.5 5.5v2M10.5 5.5v3M13.5 5.5v2" stroke="currentColor" stroke-width="1.2"/></svg>', '实物尺寸', '宽高、字号、描边和圆角', () => `${chk('keepRatio' as any, '改宽高时保持比例')}${measure}`)}
-  <div style="display:flex;flex-direction:column">
-  <span class="kicker" style="padding:4px 0">颜色与标注</span>
-  ${tool('pick', INKS.replace(/<i /g, '<i class="sm" '), '按 CMYK 数值上色', '输入印刷厂给的色值，填充或描边所选', () => `<div style="display:flex;gap:10px;align-items:center"><span style="width:36px;height:36px;border-radius:8px;flex:none;background:${pickHex};border:1px solid var(--line)"></span><div class="grid4" data-notr>${(['c', 'm', 'y', 'k'] as const).map((k) => `<label>${k.toUpperCase()}${num('pick.' + k, { min: 0, max: 100, w: 50 })}</label>`).join('')}</div></div><div style="display:flex;gap:8px;align-items:center"><button class="btn small" data-act="pick-apply" data-v="fill">填充所选</button><button class="btn small" data-act="pick-apply" data-v="stroke">描边所选</button><span class="muted xs">导出时按这组 CMYK 精确输出</span></div>`)}
-  ${tool('labels', `<svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="2" width="9" height="9" rx="1.5" fill="var(--accent)"/><path d="M4 14.5h11M4 16.5h7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`, '色卡标注', '在色块旁写上 HEX / RGB / CMYK / 专色名', () => `<div style="display:flex;gap:12px;flex-wrap:wrap">${chk('label.hex', 'HEX')}${chk('label.rgb', 'RGB')}${chk('label.cmyk', 'CMYK')}${chk('label.spot', '专色名')}${chk('label.names', '样式名')}</div><div style="display:flex;gap:8px;align-items:center"><button class="btn small" data-act="labels">为所选色块生成标注</button><span class="muted xs">重复运行会更新，不会重叠</span></div>`)}
-  <span class="kicker" style="padding:12px 0 4px">版面与图片</span>
-  ${tool('pagenum', `<svg width="18" height="18" viewBox="0 0 18 18"><rect x="3" y="1.5" width="12" height="15" rx="1" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M10 13h3" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round"/></svg>`, '页码', '按导出顺序自动编号，奇偶页左右对称', () => `<div class="line"><span class="l sm">格式</span><span data-notr style="display:flex;flex:1">${sel('pageNum.format', [['{n}', '1'], ['{n} / {total}', '1 / 12'], ['- {n} -', '- 1 -'], ['P{n}', 'P1'], ['Page {n}', 'Page 1'], ['第 {n} 页', '第 1 页'], ['{n} ページ', '1 ページ'], ['{n} 페이지', '1 페이지'], ['Página {n}', 'Página 1'], ['Seite {n}', 'Seite 1']])}</span></div><div class="line"><span class="l sm">起始数字</span>${num('pageNum.start', { min: 0, w: 56 })}</div><div class="line"><span class="l sm">跳过前几页（封面）</span>${num('pageNum.skip', { min: 0, w: 56 })}</div><div class="line"><span class="l sm">位置</span>${seg('pageNum.position', [['outer', '外侧角'], ['center', '底部居中']])}</div>${chk('pageNum.create', '没有名为「页码」的文字图层时自动添加')}<div><button class="btn small" data-act="page-numbers">按导出页顺序编页码</button></div>`)}
-  ${tool('image', `<svg width="18" height="18" viewBox="0 0 18 18"><rect x="1.5" y="3" width="15" height="12" rx="1.5" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M3 13l4-4 3 3 2-2 3 3" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/></svg>`, '替换 / 放大图片', '换图保留裁切；低清图放大 2 倍', () => {
-    const imgs = m.filter((n) => n.hasImage);
-    return imgs.length ? `<p class="hint xs">替换或放大图片会修改原稿；放大不会补回缺失的细节。</p>${imgs.map((n) => `<div class="line"><span class="l ell" data-notr>${esc(n.name)}</span><button class="btn small" data-act="replace-image" data-v="${n.id}">替换图片</button><button class="btn small" data-act="upscale" data-v="${n.id}">放大 2 倍</button></div>`).join('')}` : `<p class="hint xs">先在画布上选中带图片的图层。</p>`;
-  })}
-  ${tool('rescale', `<svg width="18" height="18" viewBox="0 0 18 18"><rect x="1.5" y="1.5" width="15" height="15" rx="1" stroke="var(--fg3)" stroke-width="1.2" fill="none"/><rect x="5" y="5" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>`, '缩回实际尺寸', '按 300 DPI 像素做的画板，一键换算成实际尺寸', () => `<p class="hint xs">例如 A4 做成 2480×3508 像素的画板，缩回 210×297 mm，图片清晰度不变。</p><div class="line"><span class="l sm">原来按</span><select id="rescale-dpi" style="flex:none;width:90px"><option>300</option><option>150</option><option>200</option><option>350</option><option>600</option></select><span class="unit">DPI</span><button class="btn small" data-act="rescale">缩回实际尺寸</button></div>`)}
-  <span class="kicker" style="padding:12px 0 4px">包装</span>
-  ${tool('box', `<svg width="18" height="18" viewBox="0 0 18 18"><path d="M9 1.5l7 3v9l-7 3-7-3v-9z M2 4.5l7 3 7-3 M9 7.5v9" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round" stroke-dasharray="2 1.5"/></svg>`, '纸盒刀版生成', '插舌盒 · 托盘盒 · 飞机盒，输入长宽高即可', () => `<div class="line"><span class="l sm">盒型</span>${seg('box.style', [['ste', '插舌盒'], ['tray', '托盘盒'], ['mailer', '飞机盒']])}</div><div class="grid4"><label>长${num('box.w', { min: 10, w: 56 })}</label><label>宽${num('box.d', { min: 10, w: 56 })}</label><label>高${num('box.h', { min: 5, w: 56 })}</label><span class="unit" style="align-self:center">mm</span></div><p class="hint xs">内尺寸。生成后刀线为实线、折线为虚线，图层名已按规则命名，导出时自动输出为刀版专色。</p><div><button class="btn small" data-act="box">生成刀版</button></div>`)}
-  </div>
-  <input type="file" id="file-image" accept="image/png,image/jpeg,image/webp" hidden>`;
-}
-const mbox = (label: string, k: string, id: string, v: number, unit: string) =>
-  `<label class="well" style="display:flex;flex-direction:column;gap:2px;padding:6px 8px;min-width:84px;flex:1"><span class="muted xs">${label}</span><span style="display:flex;align-items:center;gap:4px"><input type="number" step="any" data-act="mz" data-id="${id}" data-k="${k}" value="${v}" style="width:56px;height:26px;border:0;background:transparent;padding:0;font-weight:600"><span class="unit" data-notr>${unit}</span></span></label>`;
-
 
 // ---------------- actions ----------------
 
@@ -1644,20 +847,24 @@ async function upscale(id: string) {
   }
 }
 
-document.addEventListener('click', async (ev) => {
-  const el = (ev.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
+document.addEventListener('click', (ev) => {
+  if (!(ev.target instanceof Element)) return;
+  const el = ev.target.closest<HTMLElement>('[data-act]');
   if (!el) return;
   if (el.tagName === 'INPUT' || el.tagName === 'SELECT') return; // handled by change events
-  if ((ev.target as HTMLElement).closest('[data-stop]') && el.dataset.act === 'expand') return;
+  if (ev.target.closest('[data-stop]') && el.dataset.act === 'expand') return;
   const act = el.dataset.act!;
-  const v = el.dataset.v!;
   if (el.tagName === 'A') ev.preventDefault();
+  void dispatchAction(act, el.dataset.v || '', el.dataset, el);
+});
+
+export async function dispatchAction(act: string, v: string = '', data: Record<string, string | undefined> = {}, source?: HTMLElement) {
   const s = S.settings;
   switch (act) {
     case 'route':
       if (S.route === 'welcome') s.onboarded = true;
       S.route = v as Route;
-      if (v === 'check' && (el.closest('.quality') || el.closest('dialog'))) S.checkTab = 'issues';
+      if (v === 'check' && source?.closest('.quality,[role=dialog]')) S.checkTab = 'issues';
       S.sheet = '';
       S.sheetStack = [];
       render();
@@ -1666,7 +873,7 @@ document.addEventListener('click', async (ev) => {
       break;
     case 'sheet':
       if (v === 'imposition') S.impBackup = structuredClone(s.imp);
-      if (el.dataset.root) {
+      if (data.root) {
         S.sheetStack = [];
         S.sheet = v as Sheet;
       } else if (!v) {
@@ -1694,11 +901,13 @@ document.addEventListener('click', async (ev) => {
       confirmExport();
       break;
     case 'export-cancel':
-      ($('export-confirm') as HTMLDialogElement).close();
+      S.confirmOpen = false;
+      render();
       break;
     case 'export-confirm':
       if (S.confirmKey !== confirmationKey()) return;
-      ($('export-confirm') as HTMLDialogElement).close();
+      S.confirmOpen = false;
+      render();
       doExport();
       break;
     case 'pages-open':
@@ -1712,14 +921,14 @@ document.addEventListener('click', async (ev) => {
       break;
     case 'page-move': {
       const from = S.order.indexOf(v);
-      const to = from + Number(el.dataset.dir);
+      const to = from + Number(data.dir);
       if (from < 0 || to < 0 || to >= S.order.length) return;
       S.order.splice(to, 0, S.order.splice(from, 1)[0]);
       render();
       break;
     }
     case 'tg':
-      update(el.dataset.path!, !getPath(el.dataset.path!));
+      update(data.path!, !getPath(data.path!));
       break;
     case 'orient':
       update('doc.landscape', v === 'h');
@@ -1819,7 +1028,7 @@ document.addEventListener('click', async (ev) => {
       update('textOutline', v);
       break;
     case 'seg':
-      update(el.dataset.path!, JSON.parse(v));
+      update(data.path!, JSON.parse(v));
       break;
     case 'select':
       post('select-node', { id: v });
@@ -1867,7 +1076,7 @@ document.addEventListener('click', async (ev) => {
       render();
       break;
     case 'ckind': {
-      const hex = el.dataset.hex!;
+      const hex = data.hex!;
       const [r, g, b] = hexToRgb(hex);
       const icc = engine ? engine.iccCmyk(r, g, b) : { c: 0, m: 0, y: 0, k: 0 };
       if (v === 'finish') {
@@ -1886,7 +1095,7 @@ document.addEventListener('click', async (ev) => {
       break;
     }
     case 'nearest-spot': {
-      const hex = el.dataset.hex!;
+      const hex = data.hex!;
       const sw = nearestSpot(hex);
       if (!sw) return;
       setOverride(hex, (o) => ({ ...o, spot: { name: sw.name, tint: 100, alt: sw.cmyk || o.spot?.alt || { c: 0, m: 0, y: 0, k: 0 } } }));
@@ -1894,12 +1103,12 @@ document.addEventListener('click', async (ev) => {
       break;
     }
     case 'reset-color':
-      delete s.colorFinishing[el.dataset.hex!];
-      setOverride(el.dataset.hex!, () => null);
+      delete s.colorFinishing[data.hex!];
+      setOverride(data.hex!, () => null);
       break;
     case 'tmode':
       if (s.textOutline !== 'perNode') update('textOutline', 'perNode');
-      post('set-text-mode', { ids: [v], mode: el.dataset.m });
+      post('set-text-mode', { ids: [v], mode: data.m });
       break;
     case 'tall': {
       const t = S.texts || [];
@@ -2075,45 +1284,42 @@ document.addEventListener('click', async (ev) => {
       post('page-numbers', { opts: { ids: S.order, ...s.pageNum } });
       break;
     case 'rescale':
-      post('rescale-dpi', { dpi: +($('rescale-dpi') as HTMLSelectElement).value });
+      post('rescale-dpi', { dpi: +($('rescale-dpi') as HTMLInputElement).value });
       break;
   }
-});
+}
 
-document.addEventListener('change', (ev) => {
-  inChange = true;
-  try {
-    onChange(ev);
-  } finally {
-    inChange = false;
-  }
-});
+document.addEventListener('change', onChange);
 
 function onChange(ev: Event) {
   const el = ev.target as HTMLInputElement;
-  const act = el.dataset.act;
-  if (el.id === 'lang') {
-    S.settings.lang = el.value as Settings['lang'];
+  changeValue({ ...el.dataset, id: el.id, nodeId: el.dataset.id }, el.type === 'checkbox' || el.dataset.t === 'bool' ? el.checked : el.value);
+}
+
+export function changeValue(target: { id?: string; act?: string; bind?: string; t?: string; u?: string; hex?: string; k?: string; nodeId?: string }, value: string | number | boolean): void {
+  const act = target.act;
+  if (target.id === 'lang') {
+    S.settings.lang = String(value) as Settings['lang'];
     saveSettings();
     applyLang();
     render();
     return;
   }
-  if (el.id === 'pdf-password') {
-    S.password = el.value;
-    renderFoot();
+  if (target.id === 'pdf-password') {
+    S.password = String(value);
+    render();
     return;
   }
-  if (el.dataset.bind) {
-    const t = el.dataset.t;
-    let v: any = t === 'bool' ? el.checked : t === 'num' ? Number(el.value) : el.value;
-    if (el.dataset.u) v = +fromUnit(Number(el.value)).toFixed(3);
-    update(el.dataset.bind, v);
+  if (target.bind) {
+    const t = target.t;
+    let v: any = t === 'bool' ? Boolean(value) : t === 'num' ? Number(value) : value;
+    if (target.u) v = +fromUnit(Number(value)).toFixed(3);
+    update(target.bind, v);
     return;
   }
   const s = S.settings;
   if (act === 'preset') {
-    const id = el.value;
+    const id = String(value);
     s.doc.preset = id;
     const p = id.startsWith('custom:') ? s.customPapers[+id.slice(7)] : PAPER_PRESETS.find((x) => x.id === id);
     if (p) {
@@ -2126,47 +1332,47 @@ function onChange(ev: Event) {
     saveSettings();
     render();
   } else if (act === 'load-map') {
-    const m = allMaps().find((x) => x.name === el.value.replace(/（本文件）$/, ''));
+    const m = allMaps().find((x) => x.name === String(value).replace(/（本文件）$/, ''));
     s.activeMap = m ? m.name : '';
     s.overrides = m ? structuredClone(m.overrides) : {};
     s.colorFinishing = m?.finishing ? structuredClone(m.finishing) : {};
     saveSettings();
     refreshEngine();
   } else if (act === 'cmyk') {
-    const hex = el.dataset.hex!;
-    const k = el.dataset.k as keyof CMYK;
-    const val = Math.max(0, Math.min(100, Number(el.value)));
+    const hex = target.hex!;
+    const k = target.k as keyof CMYK;
+    const val = Math.max(0, Math.min(100, Number(value)));
     setOverride(hex, (o) => {
       if (o.spot) o.spot.alt = { ...o.spot.alt, [k]: val };
       else o.cmyk = { ...(o.cmyk || { c: 0, m: 0, y: 0, k: 0 }), [k]: val };
       return o;
     });
   } else if (act === 'spotname') {
-    const lib = S.lib.find((l) => l.name === el.value.trim());
-    setOverride(el.dataset.hex!, (o) => {
+    const lib = S.lib.find((l) => l.name === String(value).trim());
+    setOverride(target.hex!, (o) => {
       if (o.spot) {
-        o.spot.name = el.value.trim() || 'Spot';
+        o.spot.name = String(value).trim() || 'Spot';
         if (lib?.cmyk) o.spot.alt = { ...lib.cmyk };
       }
       return o;
     });
   } else if (act === 'tint') {
-    setOverride(el.dataset.hex!, (o) => {
-      if (o.spot) o.spot.tint = Number(el.value);
+    setOverride(target.hex!, (o) => {
+      if (o.spot) o.spot.tint = Number(value);
       return o;
     });
   } else if (act === 'overprint') {
-    setOverride(el.dataset.hex!, (o) => ({ ...o, overprint: el.checked }));
+    setOverride(target.hex!, (o) => ({ ...o, overprint: Boolean(value) }));
   } else if (act === 'finish-name') {
-    s.colorFinishing[el.dataset.hex!] = el.value;
+    s.colorFinishing[target.hex!] = String(value);
     saveSettings();
     render();
   } else if (act === 'mz') {
-    const k = el.dataset.k!;
-    const val = Number(el.value);
+    const k = target.k!;
+    const val = Number(value);
     const px = (mmv: number) => (mmv * 72) / 25.4;
     const keepRatio = (s as any).keepRatio;
-    const data: any = { ids: [el.dataset.id], keepRatio };
+    const data: any = { ids: [target.nodeId], keepRatio };
     if (k === 'w') data.w = px(fromUnit(val));
     if (k === 'h') data.h = px(fromUnit(val));
     if (k === 'fontSize') data.fontSize = val;
@@ -2228,8 +1434,9 @@ async function importIccFiles(files: File[]) {
   saveSettings();
   refreshEngine();
 }
-$('file-icc').addEventListener('change', async (ev) => {
+document.addEventListener('change', async (ev) => {
   const inp = ev.target as HTMLInputElement;
+  if (inp.id !== 'file-icc') return;
   await importIccFiles([...(inp.files || [])]);
   inp.value = '';
 });
@@ -2237,10 +1444,8 @@ $('file-icc').addEventListener('change', async (ev) => {
 document.addEventListener('dragover', (ev) => {
   if (ev.dataTransfer?.types.includes('Files')) {
     ev.preventDefault();
-    document.getElementById('icc-drop')?.classList.add('over');
   }
 });
-document.addEventListener('dragleave', () => document.getElementById('icc-drop')?.classList.remove('over'));
 document.addEventListener('drop', (ev) => {
   const files = [...(ev.dataTransfer?.files || [])].filter((f) => /\.(icc|icm)$/i.test(f.name));
   if (!files.length) return;
@@ -2274,23 +1479,21 @@ function confirmExport() {
   const issues = currentIssues();
   const risks = issues?.filter((i) => i.level === 'warning' || i.level === 'error') || [];
   if (issues && !risks.length) { doExport(); return; }
-  const dialog = $('export-confirm') as HTMLDialogElement;
   S.confirmKey = confirmationKey();
-  dialog.innerHTML = `<h2 id="confirm-title">${issues ? '仍有风险，确认继续？' : '还未完成当前检查'}</h2><p class="hint">${issues ? '继续导出不会消除这些风险。' : '可以先检查，也可以跳过检查导出。跳过不代表文件适合送印。'}</p>${risks.length ? `<ul>${risks.map((i) => `<li>${esc(i.msg)}</li>`).join('')}</ul>` : S.settings.mode === 'cmyk' && !currentProfile() ? '<p class="hint">未选择 ICC，颜色仅能近似换算。</p>' : ''}<div class="dialog-actions"><button class="btn" data-act="export-cancel" autofocus>取消</button><button class="btn" data-act="route" data-v="check">${issues ? '查看检查' : '开始检查'}</button><button class="btn primary" data-act="export-confirm">${issues ? '接受风险并导出' : '跳过检查并导出'}</button></div>`;
-  translateDom(dialog);
-  dialog.showModal();
+  S.confirmOpen = true;
+  render();
 }
 
 function busy(on: boolean, msg = '') {
   S.busy = on;
-  $('overlay').classList.toggle('on', on);
-  if (msg) $('ov-msg').textContent = tr(msg);
-  if (!on) ($('ov-bar') as HTMLElement).style.width = '0';
-  renderFoot();
+  if (msg) S.progressMessage = msg;
+  if (!on) S.progressValue = 0;
+  render();
 }
 function progress(msg: string, frac: number) {
-  $('ov-msg').textContent = tr(msg);
-  ($('ov-bar') as HTMLElement).style.width = Math.round(frac * 100) + '%';
+  S.progressMessage = msg;
+  S.progressValue = frac;
+  render();
 }
 
 function download(name: string, bytes: Uint8Array, type: string) {
@@ -2475,9 +1678,17 @@ async function doExport() {
 // dev aid: lets the test harness walk every view and list untranslated strings
 (window as any).__pk = { S, render, update, missing, setLang: (l: Lang) => { S.settings.lang = l; applyLang(); render(); } };
 
-$('export-confirm').addEventListener('close', () => {
-  if (S.route === 'export' && !S.sheet && !S.busy) $('foot').querySelector<HTMLButtonElement>('[data-act="export"]')?.focus();
-});
+export function startUi() {
+  render();
+  post('init');
+}
 
-render();
-post('init');
+export {
+  S, DEFAULTS, RICH_PRESETS, MORE_KEYS, BUILTIN_PROFILES,
+  getPath, update, toUnit, fromUnit, UNIT_NAMES, hexToRgb, fmtC,
+  cmykFor, currentProfile, allMaps, frameSize, orderedFrames,
+  selectionKey, checkKey, currentIssues, confirmationKey,
+  applyProfile, profileName, profileDirty, nupGrid, impSheets,
+  impLabel, exportLabel, readiness, colorIssues, paintPreview, engine,
+};
+export type { ImpKind, CheckTab };

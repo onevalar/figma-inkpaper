@@ -53,6 +53,10 @@
 
 ## 开发
 
+插件使用 TypeScript。界面由 React 和真正的 [Arc UI](https://uiarc.dev) 组件搭建，包括按钮、输入框、选择器、开关、标签页、折叠卡片、对话框和进度条。组件源码位于 `src/components/arc/`；`src/ui/views.tsx` 负责组合页面，`src/ui/layout.css` 只处理布局与印刷预览图形，原有颜色转换和文件导出逻辑仍在 `src/pdf/`。
+
+构建会把 React、Arc 样式、图标和 LittleCMS WASM 一起打包进 `dist/ui.html`，运行时不加载 CDN，也不需要网络。字体使用系统字体，以保持离线使用。
+
 ```bash
 npm install
 node build.mjs          # 生成 dist/；同时用 OpenCC 生成繁体中文
@@ -65,6 +69,6 @@ node test/raster.mjs    # CMYK / RGB / 灰度 TIFF、JPEG、PNG
 
 - 测试用的 ICC：Adobe 的许可不允许随代码分发，所以仓库里没有。跑测试前请把 `JapanColor2001Coated.icc` 放进 `test/fixtures/`。
 - 测试页：用本地服务器打开 `test/harness.html`，它会模拟 Figma，可以在浏览器里点完整个界面。
-- 界面回归不依赖 ICC，可验证语言、单位、资源入口、专业设置持久化、风险确认及导出参数。`node test/preview.mjs` 可打包实际界面与测试画板供评审；预览不连接真实 Figma，样例不能用于送印。
+- 界面回归需要 `agent-browser`，不依赖 ICC；通过真实点击和键盘操作验证语言、单位、资源入口、专业设置持久化、风险确认、精确数值与专色名输入及导出参数。`node test/preview.mjs` 可打包实际界面与测试画板供评审；预览不连接真实 Figma，样例不能用于送印。
 - 翻译：翻译表在 `src/i18n/dict.ts`。第一列是简体中文原文，后面依次是英、日、韩、西、德、法。新增界面文字后，在测试页切换语言，可以列出漏翻的条目。
 - 功能对照：竞品调研和功能对照见 [FEATURES.md](FEATURES.md)。
