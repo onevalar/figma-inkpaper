@@ -1,0 +1,59 @@
+{
+  "scope": "Targeted local checks, not independent PDF/X certification",
+  "valid": [
+    {
+      "file": "presskit-test",
+      "flavor": "x4"
+    },
+    {
+      "file": "x1a",
+      "flavor": "x1a"
+    },
+    {
+      "file": "x3",
+      "flavor": "x3"
+    }
+  ],
+  "rejected": [
+    {
+      "name": "missing output intent",
+      "code": "output-intent"
+    },
+    {
+      "name": "wrong ICC channel count",
+      "code": "icc"
+    },
+    {
+      "name": "ambiguous trim and art boxes",
+      "code": "page-boxes"
+    },
+    {
+      "name": "trim outside bleed",
+      "code": "page-boxes"
+    },
+    {
+      "name": "missing XMP",
+      "code": "xmp"
+    },
+    {
+      "name": "unembedded font",
+      "code": "font-embedding"
+    },
+    {
+      "name": "PDF/X-1a transparency",
+      "code": "transparency"
+    },
+    {
+      "name": "PDF/X-1a RGB content",
+      "code": "rgb"
+    },
+    {
+      "name": "scripted content",
+      "code": "unsupported-content"
+    },
+    {
+      "name": "encryption",
+      "code": "encryption"
+    }
+  ]
+}

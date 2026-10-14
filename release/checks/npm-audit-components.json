@@ -1,0 +1,351 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@onevalar/pro": {
+      "name": "@onevalar/pro",
+      "severity": "critical",
+      "isDirect": true,
+      "via": [
+        "@tiptap/core",
+        "@tiptap/extension-link",
+        "@tiptap/extension-underline",
+        "@tiptap/extensions",
+        "@tiptap/react",
+        "@tiptap/suggestion",
+        "maplibre-gl",
+        "streamdown"
+      ],
+      "effects": [],
+      "range": "",
+      "nodes": [
+        "node_modules/@onevalar/pro"
+      ],
+      "fixAvailable": false
+    },
+    "@parcel/watcher": {
+      "name": "@parcel/watcher",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "micromatch"
+      ],
+      "effects": [
+        "@tailwindcss/cli"
+      ],
+      "range": "2.1.0 - 2.5.1",
+      "nodes": [
+        "node_modules/@parcel/watcher"
+      ],
+      "fixAvailable": {
+        "name": "@tailwindcss/cli",
+        "version": "4.3.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@tailwindcss/cli": {
+      "name": "@tailwindcss/cli",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "@parcel/watcher"
+      ],
+      "effects": [],
+      "range": "<=0.0.0-insiders.f861d5c || >=4.3.1",
+      "nodes": [
+        "node_modules/@tailwindcss/cli"
+      ],
+      "fixAvailable": {
+        "name": "@tailwindcss/cli",
+        "version": "4.3.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@tiptap/core": {
+      "name": "@tiptap/core",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1158508,
+          "name": "@tiptap/core",
+          "dependency": "@tiptap/core",
+          "title": "Tiptap: mergeAttributes() turns an own __proto__ key into inherited executable DOM attributes",
+          "url": "https://github.com/advisories/GHSA-cp6q-959q-f8rh",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-79",
+            "CWE-1321"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": ">=2.0.0-alpha.0 <3.30.4"
+        },
+        {
+          "source": 1193728,
+          "name": "@tiptap/core",
+          "dependency": "@tiptap/core",
+          "title": "Tiptap: Quadratic ReDoS in block and inline Markdown attribute parsing",
+          "url": "https://github.com/advisories/GHSA-j95f-988m-3j2f",
+          "severity": "high",
+          "cwe": [
+            "CWE-400",
+            "CWE-1333"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": ">=3.7.0 <3.30.5"
+        }
+      ],
+      "effects": [
+        "@onevalar/pro",
+        "@tiptap/extension-link",
+        "@tiptap/extension-underline",
+        "@tiptap/extensions",
+        "@tiptap/react",
+        "@tiptap/suggestion"
+      ],
+      "range": "<=3.30.4",
+      "nodes": [
+        "node_modules/@tiptap/core"
+      ],
+      "fixAvailable": false
+    },
+    "@tiptap/extension-link": {
+      "name": "@tiptap/extension-link",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@tiptap/core"
+      ],
+      "effects": [],
+      "range": "<=3.0.0-next.8 || 3.22.4 - 3.30.3",
+      "nodes": [
+        "node_modules/@tiptap/extension-link"
+      ],
+      "fixAvailable": true
+    },
+    "@tiptap/extension-underline": {
+      "name": "@tiptap/extension-underline",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@tiptap/core"
+      ],
+      "effects": [],
+      "range": "<=3.0.0-next.8 || 3.22.4 - 3.30.3",
+      "nodes": [
+        "node_modules/@tiptap/extension-underline"
+      ],
+      "fixAvailable": true
+    },
+    "@tiptap/extensions": {
+      "name": "@tiptap/extensions",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@tiptap/core"
+      ],
+      "effects": [],
+      "range": "<=3.0.0-next.8 || 3.22.4 - 3.30.3",
+      "nodes": [
+        "node_modules/@tiptap/extensions"
+      ],
+      "fixAvailable": true
+    },
+    "@tiptap/react": {
+      "name": "@tiptap/react",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@tiptap/core"
+      ],
+      "effects": [],
+      "range": "<=3.0.0-next.8 || 3.22.4 - 3.30.3",
+      "nodes": [
+        "node_modules/@tiptap/react"
+      ],
+      "fixAvailable": true
+    },
+    "@tiptap/suggestion": {
+      "name": "@tiptap/suggestion",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@tiptap/core"
+      ],
+      "effects": [],
+      "range": "<=3.0.0-next.8 || 3.22.4 - 3.30.3",
+      "nodes": [
+        "node_modules/@tiptap/suggestion"
+      ],
+      "fixAvailable": true
+    },
+    "braces": {
+      "name": "braces",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1240992,
+          "name": "braces",
+          "dependency": "braces",
+          "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+          "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+          "severity": "high",
+          "cwe": [
+            "CWE-674"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<=3.0.3"
+        }
+      ],
+      "effects": [
+        "micromatch"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/braces"
+      ],
+      "fixAvailable": {
+        "name": "@tailwindcss/cli",
+        "version": "4.3.0",
+        "isSemVerMajor": true
+      }
+    },
+    "katex": {
+      "name": "katex",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1241206,
+          "name": "katex",
+          "dependency": "katex",
+          "title": "KaTeX: Existing prototype pollution can bypass trust restrictions",
+          "url": "https://github.com/advisories/GHSA-238p-pmpm-9mq7",
+          "severity": "low",
+          "cwe": [
+            "CWE-807"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": ">=0.11.0 <0.18.2"
+        }
+      ],
+      "effects": [
+        "mermaid"
+      ],
+      "range": "0.11.0 - 0.18.1",
+      "nodes": [
+        "node_modules/katex"
+      ],
+      "fixAvailable": true
+    },
+    "maplibre-gl": {
+      "name": "maplibre-gl",
+      "severity": "critical",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1193680,
+          "name": "maplibre-gl",
+          "dependency": "maplibre-gl",
+          "title": "MapLibre GL JS: XSS Sanitizer Bypass in DOM.sanitize() via Live NamedNodeMap Removal Skip",
+          "url": "https://github.com/advisories/GHSA-jrc7-96c5-q579",
+          "severity": "critical",
+          "cwe": [
+            "CWE-79"
+          ],
+          "cvss": {
+            "score": 10,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N"
+          },
+          "range": "<=6.4.0"
+        }
+      ],
+      "effects": [],
+      "range": "<=6.4.0",
+      "nodes": [
+        "node_modules/maplibre-gl"
+      ],
+      "fixAvailable": true
+    },
+    "mermaid": {
+      "name": "mermaid",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "katex"
+      ],
+      "effects": [
+        "streamdown"
+      ],
+      "range": ">=10.9.0-rc.1",
+      "nodes": [
+        "node_modules/mermaid"
+      ],
+      "fixAvailable": true
+    },
+    "micromatch": {
+      "name": "micromatch",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "braces"
+      ],
+      "effects": [
+        "@parcel/watcher"
+      ],
+      "range": ">=0.2.0",
+      "nodes": [
+        "node_modules/micromatch"
+      ],
+      "fixAvailable": {
+        "name": "@tailwindcss/cli",
+        "version": "4.3.0",
+        "isSemVerMajor": true
+      }
+    },
+    "streamdown": {
+      "name": "streamdown",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "mermaid"
+      ],
+      "effects": [],
+      "range": "0.0.0-canary-20251123051009 || 1.1.0 - 2.0.0-canary.3 || 2.5.0",
+      "nodes": [
+        "node_modules/streamdown"
+      ],
+      "fixAvailable": true
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 3,
+      "moderate": 5,
+      "high": 5,
+      "critical": 2,
+      "total": 15
+    },
+    "dependencies": {
+      "prod": 533,
+      "dev": 125,
+      "optional": 94,
+      "peer": 0,
+      "peerOptional": 0,
+      "total": 663
+    }
+  }
+}

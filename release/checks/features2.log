@@ -1,0 +1,7 @@
+x1a x1a.pdf FLAT 此页有透明 / 混合 / 阴影效果，PDF/X-1a、X-3 不允许透明，已整页转为 150dpi 图像（文字也变成图像）
+x3 x3.pdf FLAT 此页有透明 / 混合 / 阴影效果，PDF/X-1a、X-3 不允许透明，已整页转为 150dpi 图像（文字也变成图像）
+perside perside.pdf 
+booklet booklet.pdf  |  |  |  |  | 
+nup nup.pdf 
+duplex duplex.pdf  | 
+scaled scaled.pdf 

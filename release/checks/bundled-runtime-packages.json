@@ -1,0 +1,20 @@
+[
+  "@internationalized/string",
+  "@noble/ciphers",
+  "@noble/hashes",
+  "@onevalar/pro",
+  "@pdf-lib/standard-fonts",
+  "@pdf-lib/upng",
+  "clsx",
+  "lcms-wasm",
+  "pako",
+  "pdf-lib",
+  "react",
+  "react-aria",
+  "react-aria-components",
+  "react-dom",
+  "scheduler",
+  "tailwind-variants",
+  "tslib",
+  "use-sync-external-store"
+]

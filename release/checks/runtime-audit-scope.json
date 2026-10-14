@@ -1,0 +1,19 @@
+{
+  "scope": "Positive esbuild runtime bytes versus direct npm advisories; dependency aggregates and unused install-tree packages remain in npm audit",
+  "shippedDirectAdvisories": [],
+  "installedVulnerabilities": {
+    "info": 0,
+    "low": 3,
+    "moderate": 5,
+    "high": 5,
+    "critical": 2,
+    "total": 15
+  },
+  "unusedAdvisoryPackages": [
+    "@tiptap/core",
+    "braces",
+    "katex",
+    "maplibre-gl"
+  ],
+  "sourceOwnedLibraryCommit": "9a1dd33d1e36fdd81f5282f9ca2838b07fe5ce92"
+}

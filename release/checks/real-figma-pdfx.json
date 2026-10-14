@@ -1,0 +1,19 @@
+{
+  "officialId": "1691712698137473867",
+  "flavor": "x4",
+  "issues": [],
+  "explicitArtBox": false,
+  "trim": {
+    "x": 36.43307086614173,
+    "y": 36.43307086614173,
+    "width": 255.1181102362205,
+    "height": 153.07086614173227
+  },
+  "bleed": {
+    "x": 27.92913385826772,
+    "y": 27.92913385826772,
+    "width": 272.12598425196853,
+    "height": 170.0787401574803
+  },
+  "scope": "Targeted local preflight, qpdf and visual rendering; not independent ISO certification"
+}

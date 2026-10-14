@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-13",
+  "name": "Inkpaper 纸墨",
+  "id": "1691712698137473867",
+  "publisher": "OneValar",
+  "support": "onevalar@gmail.com",
+  "category": "Design tools → Import & export",
+  "tag": "PDF",
+  "icon": "icon-128.png",
+  "thumbnail": "cover-1920x1080.png",
+  "carousel": [
+    "01-export-1920x1080.png",
+    "02-dark-1920x1080.png",
+    "03-check-1920x1080.png"
+  ],
+  "network": "No network access",
+  "paidOptionEnabled": false,
+  "finalStepOpen": true,
+  "finalPublishClicked": false,
+  "submitted": false,
+  "legalTermsAccepted": false
+}

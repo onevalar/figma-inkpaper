@@ -1226,6 +1226,21 @@ export async function dispatchAction(act: string, v: string = '', data: Record<s
       post('store-set', { key: 'pk_presets', value: S.presets });
       render();
       break;
+    case 'migration-export': {
+      const reply = await request<{ backup: any }>('migration-export', {}, 'migration-backup');
+      download('Inkpaper-private-migration.json', new TextEncoder().encode(JSON.stringify(reply.backup)), 'application/json');
+      notify('迁移备份已导出，包含 ICC 和本文件印刷信息，请私下保存');
+      break;
+    }
+    case 'migration-import': {
+      const f = await pickFile('.json,application/json');
+      if (!f) break;
+      if (f.size > 24 * 1024 * 1024) throw new Error('迁移文件过大');
+      const backup = JSON.parse(await f.text());
+      const reply = await request<{ result: any }>('migration-import', { backup }, 'migration-imported');
+      notify(`迁移完成并校验：${reply.result.storageKeys} 项存储，${reply.result.nodeCount} 个图层。请重新打开插件。`);
+      break;
+    }
     case 'export-json':
       download('Inkpaper 预设与颜色映射.json', new TextEncoder().encode(JSON.stringify({ presets: S.presets, maps: allMaps().map(({ file: _f, ...m }) => m) }, null, 2)), 'application/json');
       break;
@@ -1525,6 +1540,10 @@ function impOption(): Imposition | undefined {
 async function doExport() {
   const s = S.settings;
   if (!S.frames.length || S.busy) return;
+  if (s.format === 'pdf' && s.mode !== 'rgb' && s.pdfx !== 'none' && (s.mode !== 'cmyk' || !currentProfile())) {
+    notify('PDF/X 需要 CMYK 模式和 ICC 配置文件。请在印刷方案中导入 ICC，或在专业设置中选择普通 PDF。', true);
+    return;
+  }
   busy(true, '准备导出…');
   try {
     if (s.blockLowPpi) {

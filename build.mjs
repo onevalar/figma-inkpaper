@@ -1,6 +1,8 @@
 // Builds dist/code.js (Figma main thread) and dist/ui.html (single file, with the LittleCMS WASM inlined).
 import { build, context } from 'esbuild';
 import fs from 'fs';
+import { generateNotices } from './scripts/notices.mjs';
+const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const watch = process.argv.includes('--watch');
 
@@ -25,9 +27,10 @@ const inlineUi = {
   setup(b) {
     b.onEnd((r) => {
       if (r.errors.length) return;
+      const notices = generateNotices(r.metafile);
       const js = fs.readFileSync('dist/ui.js', 'utf8').replace(/<\/script/gi, '<\\/script');
       const css = fs.readFileSync('dist/ui.css', 'utf8').replace(/<\/style/gi, '<\\/style');
-      const html = fs.readFileSync('src/ui/ui.html', 'utf8').replace('/*__UI_CSS__*/', () => css).replace('/*__UI_JS__*/', () => js);
+      const html = fs.readFileSync('src/ui/ui.html', 'utf8').replace('/*__UI_CSS__*/', () => css).replace('/*__UI_JS__*/', () => js).replace('__THIRD_PARTY_NOTICES__', () => escapeHtml(notices));
       fs.writeFileSync('dist/ui.html', html);
       fs.rmSync('dist/ui.js');
       fs.rmSync('dist/ui.css');
@@ -44,6 +47,7 @@ const ui = {
   target: 'es2020',
   format: 'iife',
   minify: !watch,
+  metafile: true,
   loader: { '.module.css': 'local-css' },
   define: { __LCMS_WASM_B64__: JSON.stringify(wasmB64), 'import.meta.url': '"file:///presskit/lcms.js"', 'process.env.NODE_ENV': '"production"' },
   // lcms-wasm's Emscripten loader probes for Node; keep those branches inert in the browser build
@@ -57,5 +61,6 @@ if (watch) {
   (await context(ui)).watch();
 } else {
   await build(main);
-  await build(ui);
+  const result = await build(ui);
+  fs.writeFileSync('dist/ui-metafile.json', JSON.stringify(result.metafile, null, 2));
 }

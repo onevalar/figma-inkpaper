@@ -1,0 +1,32 @@
+{
+  "cause": "Outline button radius combined with legacy horizontal-only borders",
+  "professionalRow": [
+    {
+      "bottom": "1px",
+      "class": "button button--sm button--ghost disclose",
+      "left": "0px",
+      "radius": "0px",
+      "text": "专业设置",
+      "top": "1px"
+    }
+  ],
+  "settingsRows": [
+    {
+      "class": "button button--sm button--ghost settings-link",
+      "radius": "0px",
+      "text": "印刷方案与 ICC"
+    },
+    {
+      "class": "button button--sm button--ghost settings-link",
+      "radius": "0px",
+      "text": "色板与颜色映射"
+    },
+    {
+      "class": "button button--sm button--ghost settings-link",
+      "radius": "0px",
+      "text": "预设导入 / 导出"
+    }
+  ],
+  "lightAndDarkReviewed": true,
+  "expandCollapsePassed": true
+}

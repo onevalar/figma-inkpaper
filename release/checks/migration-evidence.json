@@ -1,0 +1,17 @@
+{
+  "sourceId": "presskit-print-export-local",
+  "officialId": "1691712698137473867",
+  "storageKeys": [
+    "pk_icc_list",
+    "pk_icc_pmux16vhjfr12",
+    "pk_settings",
+    "pk_spotlib"
+  ],
+  "nodeCount": 16,
+  "binaryAndSettingsExactMatch": true,
+  "nodeMetadataExactMatch": true,
+  "reopened": true,
+  "oldDataDeleted": false,
+  "privateFilesExcluded": true,
+  "backupSha256": "d36e88e9f1fefb5ea29221900fbb82912d20522c905bc43f4e791a1d191c431f"
+}

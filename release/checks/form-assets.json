@@ -1,0 +1,42 @@
+[
+  {
+    "file": "icon-128.png",
+    "size": [
+      128,
+      128
+    ],
+    "sha256": "6badbf46c7f400a9281523bd91e6beec14c44254b423766dafc474f5350b748f"
+  },
+  {
+    "file": "cover-1920x1080.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "0b182416e500f6a7b471d103b94b383b0459436b6dad9a837da348b6f2beef55"
+  },
+  {
+    "file": "01-export-1920x1080.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "1ac25532ca49275338bf3ffd9b40a3a235eac86ca20f8212eedb9f9f1aea02ef"
+  },
+  {
+    "file": "02-dark-1920x1080.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "8e3749809da4c46ad802a606eccd9725ad9e35e83576758e9e5f057a618ebd6c"
+  },
+  {
+    "file": "03-check-1920x1080.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "662effc6b492558df94953c61e025ba5e4b1490e3cd048e9da3db36c6f24be92"
+  }
+]

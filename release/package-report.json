@@ -1,0 +1,45 @@
+{
+  "preparedAt": "2026-10-14T08:30:44.676Z",
+  "version": "1.0.0",
+  "pluginId": "1691712698137473867",
+  "formalIdProvided": true,
+  "submitted": false,
+  "files": {
+    "manifest.json": {
+      "bytes": 375,
+      "sha256": "08c92d8b4b1d77467fd2d5e2d72172ccec505d4dd93328f04227506ec24adc46"
+    },
+    "dist/code.js": {
+      "bytes": 496888,
+      "sha256": "6ff1120d4be7b5ad862023c4d72f14f0b72c83164bc4ee9fcd5bc1f88f85e925"
+    },
+    "dist/ui.html": {
+      "bytes": 2360904,
+      "sha256": "d867d193ff4f03b330961e1c481c07d10f04e927c85f28e18649a6bf74445d14"
+    },
+    "THIRD_PARTY_NOTICES.txt": {
+      "bytes": 77781,
+      "sha256": "1668272d478a1652266837d6eb65c439f02a61ac4f75d0f49bb0419fabd6f34d"
+    }
+  },
+  "excluded": [
+    "ICC/ICM",
+    "test fixtures",
+    "source",
+    "node_modules",
+    "account data"
+  ],
+  "remaining": [
+    "Review final listing and updated screenshots in Figma",
+    "Human terms acceptance and explicit submission",
+    "Figma review decision"
+  ],
+  "validationEvidence": [
+    "checks/migration-evidence.json",
+    "checks/pdfx-local-preflight.json",
+    "checks/real-figma-pdfx.json",
+    "checks/components-locales.json",
+    "checks/runtime-audit-scope.json"
+  ],
+  "independentPdfXCertification": false
+}

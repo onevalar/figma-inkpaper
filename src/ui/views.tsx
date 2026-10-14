@@ -906,10 +906,25 @@ function SettingsView() {
         defaultOpen={-1}
         items={[
           {
+            title: tr("旧版数据迁移"),
+            content: (
+              <>
+                <Hint>
+                  在旧 ID 中导出完整迁移备份，再在同一文件的正式 ID 中导入。包含 ICC、色板、偏好和画板私有数据；导入会覆盖备份中的对应项，原旧版数据保留。备份含私有资源，不用于分享或上架。
+                </Hint>
+                <Act act="migration-export">导出完整迁移备份</Act>
+                <Act act="migration-import">导入旧版迁移备份</Act>
+              </>
+            ),
+          },
+          {
             title: tr("关于与帮助"),
             content: (
               <>
                 <Hint>Inkpaper 纸墨 · 全部在本机处理，不上传设计稿</Hint>
+                <Hint>
+                  先选择画板，再检查印刷质量并设置导出。CMYK 输出请导入印刷厂提供的 ICC；无 ICC 时仅近似换算。导出后请与印刷厂核对文件。
+                </Hint>
                 <a
                   href="https://github.com/onevalar/figma-inkpaper#readme"
                   target="_blank"
@@ -917,7 +932,29 @@ function SettingsView() {
                 >
                   {tr("使用说明")}
                 </a>
+                <Hint>
+                  {tr("支持：")}
+                  <a href="mailto:onevalar@gmail.com" data-notr>
+                    onevalar@gmail.com
+                  </a>
+                </Hint>
               </>
+            ),
+          },
+          {
+            title: tr("隐私与存储"),
+            content: (
+              <Hint>
+                插件不向开发者发送设计稿或使用记录。ICC、色板、预设和偏好保存在 Figma 插件存储；画板印刷信息、文字模式及主动保存的颜色映射写入 Figma 文件，会随文件分享。外部 ICC 帮助链接由浏览器打开。
+              </Hint>
+            ),
+          },
+          {
+            title: tr("开源许可"),
+            content: (
+              <pre className="license-text" data-notr>
+                {(document.getElementById("third-party-notices") as HTMLTemplateElement | null)?.content.textContent || ""}
+              </pre>
             ),
           },
         ]}

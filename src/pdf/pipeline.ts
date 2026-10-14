@@ -1,5 +1,6 @@
 // High-level export pipeline shared by the plugin UI and the Node test harness.
 
+import { preflightPdfX } from './preflight';
 import { PDFDocument, PDFName } from 'pdf-lib';
 import { ColorEngine, ColorSettings, SpotDef } from './color';
 import { Converter, ConvertReport, VectorStroke, auditRgb } from './convert';
@@ -59,6 +60,7 @@ export async function runExport(
   const sources: PageSource[] = [];
   const knifeSources: PageSource[] = [];
   const pdfx = s.color.mode === 'rgb' ? 'none' : s.compose.pdfx;
+  if (pdfx !== 'none' && (!profile || s.color.mode !== 'cmyk')) throw new Error('PDF/X 输出需要 CMYK 模式和有效的 CMYK ICC 配置文件');
   const flatOnly = pdfx === 'x1a' || pdfx === 'x3';
   const strokesInline = s.dielineFile !== 'separate';
   const knifeFile = s.dielineFile === 'separate' || s.dielineFile === 'both';
@@ -123,6 +125,10 @@ export async function runExport(
   const files: ExportResult['files'] = [];
   const save = async (srcs: PageSource[], title: string, opts: ComposeOptions) => {
     const out = await compose(srcs, { ...opts, title });
+    if (opts.pdfx !== 'none') {
+      const issues = preflightPdfX(out, opts.pdfx);
+      if (issues.length) throw new Error('PDF/X 预检未通过：' + issues.slice(0, 4).map(i => i.message).join('；'));
+    }
     if (s.password && opts.pdfx === 'none') await encryptDocument(out, s.password);
     files.push({ name: safeName(title) + '.pdf', bytes: finalize(await out.save({ useObjectStreams: false }), opts) });
   };

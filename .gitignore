@@ -7,3 +7,6 @@ test/fixtures/*.icc
 test/fixtures/*.icm
 .claude/
 .DS_Store
+
+# Private migration backups must never be distributed
+release/private/

@@ -15,6 +15,7 @@ import {
   uni,
   dielineSpotFor,
 } from '../shared';
+import { exportMigration, importMigration } from './migration';
 import { tr, setLang } from '../i18n/i18n';
 
 const META_KEY = 'presskit'; // legacy key name, kept so existing print frames are still recognised
@@ -514,10 +515,14 @@ async function exportFrames(req: ExportRequest): Promise<ExportedFrame[]> {
     try {
       if (f.type !== 'SECTION' && (needBleedClone || needDieline || needOutline || needHairline)) {
         let c = f.clone() as Exportable;
+        clone = c; // Own the temporary node before any Figma operation can throw.
         figma.currentPage.appendChild(c);
         c.x = -100000;
         c.y = -100000;
-        if (c.type === 'INSTANCE') c = c.detachInstance();
+        if (c.type === 'INSTANCE') {
+          c = c.detachInstance();
+          clone = c;
+        }
         if (needBleedClone) {
           if (c.type === 'FRAME' && c.layoutMode === 'NONE') {
             extendToBleed(c, bPx, true);
@@ -528,16 +533,22 @@ async function exportFrames(req: ExportRequest): Promise<ExportedFrame[]> {
           } else {
             // auto-layout frames and groups: wrap so the background extends into the bleed
             const wrap = figma.createFrame();
-            wrap.resize(c.width + bPx.l + bPx.r, c.height + bPx.t + bPx.b);
-            wrap.fills = c.type === 'FRAME' ? clonePaints(c.fills) : [];
-            wrap.clipsContent = true;
-            wrap.x = c.x;
-            wrap.y = c.y;
-            figma.currentPage.appendChild(wrap);
-            wrap.appendChild(c);
-            c.x = bPx.l;
-            c.y = bPx.t;
-            clone = wrap;
+            // Keep both nodes reachable for cleanup if wrapping fails.
+            try {
+              wrap.resize(c.width + bPx.l + bPx.r, c.height + bPx.t + bPx.b);
+              wrap.fills = c.type === 'FRAME' ? clonePaints(c.fills) : [];
+              wrap.clipsContent = true;
+              wrap.x = c.x;
+              wrap.y = c.y;
+              figma.currentPage.appendChild(wrap);
+              wrap.appendChild(c);
+              c.x = bPx.l;
+              c.y = bPx.t;
+              clone = wrap;
+            } catch (error) {
+              if (!wrap.removed) wrap.remove();
+              throw error;
+            }
           }
         } else clone = c;
         if (needOutline || needDieline || needHairline)
@@ -564,7 +575,8 @@ async function exportFrames(req: ExportRequest): Promise<ExportedFrame[]> {
               if (!raster) {
                 // true centre-line path for cutting plotters (Figma would outline the stroke)
                 const geo = strokeGeometry(leaf, clone!);
-                if (geo) vectorStrokes.push({ spotName: spotForStroke!, weight: strokeWeightOf(leaf) * scale, dash: [...((leaf as any).dashPattern || [])].map((d: number) => d * scale), paths: geo });
+                if (!geo?.length) throw new Error(`无法提取「${leaf.name}」的刀线或工艺路径，请检查图层后重试。`);
+                vectorStrokes.push({ spotName: spotForStroke!, weight: strokeWeightOf(leaf) * scale, dash: [...((leaf as any).dashPattern || [])].map((d: number) => d * scale), paths: geo });
               }
               const otherFill = 'fills' in leaf && visiblePaints((leaf as any).fills).length > 0;
               if (otherFill) (leaf as any).strokes = [];
@@ -610,7 +622,7 @@ async function exportFrames(req: ExportRequest): Promise<ExportedFrame[]> {
               try {
                 figma.flatten([t]);
               } catch {
-                /* text inside locked/immutable containers */
+                throw new Error(`无法将「${t.name}」文字转曲，请检查字体和图层后重试。`);
               }
             }
           }
@@ -693,21 +705,25 @@ const compose = (p: M, q: M): M => [
 
 /** Vector paths of a shape in the export root's coordinate space, as [a b c d e f] + SVG data. */
 function strokeGeometry(leaf: SceneNode, root: SceneNode): { d: string; m: number[] }[] | null {
+  let temporary: SceneNode | null = null;
   try {
     // clone() parents the copy to the page; put it next to the original so it keeps the same position
     const dup = leaf.clone();
+    temporary = dup;
     const parent = leaf.parent as (BaseNode & ChildrenMixin) | null;
     if (parent && 'appendChild' in parent) parent.appendChild(dup);
     if (parent && 'layoutMode' in parent && (parent as FrameNode).layoutMode !== 'NONE') (dup as any).layoutPositioning = 'ABSOLUTE';
     (dup as any).relativeTransform = (leaf as any).relativeTransform;
     const v = leaf.type === 'VECTOR' ? (dup as VectorNode) : figma.flatten([dup], parent as any);
+    temporary = v;
     const rel = compose(invert(root.absoluteTransform as M), v.absoluteTransform as M);
     const m = [rel[0][0], rel[1][0], rel[0][1], rel[1][1], rel[0][2], rel[1][2]];
     const paths = v.vectorPaths.map((p) => ({ d: p.data, m }));
-    v.remove();
     return paths;
   } catch {
     return null;
+  } finally {
+    if (temporary && !temporary.removed) temporary.remove();
   }
 }
 
@@ -945,6 +961,13 @@ figma.on('currentpagechange', sendSelection);
 figma.ui.onmessage = async (msg: any) => {
   try {
     switch (msg.type) {
+      case 'migration-export':
+        post('migration-backup', { backup: await exportMigration() });
+        break;
+      case 'migration-import':
+        post('migration-imported', { result: await importMigration(msg.backup) });
+        sendSelection();
+        break;
       case 'init': {
         const [settings, profiles, maps, presets] = await Promise.all(['pk_settings', 'pk_icc_list', 'pk_maps', 'pk_presets'].map((k) => figma.clientStorage.getAsync(k)));
         let fileMaps: any[] = [];

@@ -1,0 +1,83 @@
+Window: "Untitled", App: Figma.
+0 standard window Untitled, Secondary Actions: Raise
+	1 container Untitled
+		2 container
+			3 HTML content Figma, URL: file:///Applications/Figma.app/Contents/Resources/app.asar/shell.html
+				4 container
+					5 tab group Tab bar
+						6 container
+							7 tab (settable, integer) Description: Home, Value: 0
+							8 tab (selected) Description: Untitled, Value: 1
+								9 button Close tab
+							10 button New file
+						11 pop up button Open and recently closed tabs
+			12 HTML content Untitled – Figma, URL: figma.com/design/bQh3JOQWphQvOI80PsEKo7/Untitled?node-id=0-1&p=f&viewport=-8728%2C361%2C1.11&t=LP0Hh5hPk54qkSrP-0
+				13 container Publish plugin
+					14 container
+						15 heading Publish plugin, Value: 2
+							16 text Publish plugin
+						17 tab group
+							18 tab (settable, integer) Describe your resource, Value: 0
+							19 tab (settable, integer) Choose some images, Value: 0
+							20 tab (settable, integer) Data security, Value: 0
+							21 tab (selected) Add the final details, Value: 1
+						22 text Resource preview
+						23 image Thumbnail image
+						24 container Inkpaper 纸墨
+							25 text Inkpaper 纸墨
+						26 text By OneValar
+						27 container Add the final details
+							28 text Publish to
+							29 (disabled)
+								30 container
+									31 image
+									32 radio button (disabled) Community Public, Value: 1
+									33 text Community Public
+							34 text Author (Share as)
+							35 container
+								36 radio button OneValar Individual creator, Value: 1
+								37 text OneValar Individual creator
+							38 container
+								39 radio button NEXT Team, Value: 0
+								40 text NEXT Team
+							41 container
+								42 radio button TEST Team, Value: 0
+								43 text TEST Team
+							44 text Additional contributors
+							45 combo box (settable) Give up to 10 creators credit by name or @username
+							46 text Comments
+							47 checkbox Allow comments from Community members, Value: 1
+							48 image
+							49 image
+							50 text Support contact (required)
+							51 text field (settable) Value: onevalar@gmail.com, Placeholder: Email or website where users can contact you
+							52 text Plugin ID
+							53 text 1691712698137473867
+							54 text Compatibility
+							55 text For Figma
+							56 text Network
+							57 button No network access
+								58 image
+								59 text No network access
+								60 image
+						61 button Back
+						62 button Publish
+						63 button Close
+	64 close button
+	65 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	66 minimize button
+67 menu bar
+	68 Figma
+	69 File
+	70 Edit
+	71 View
+	72 Object
+	73 Text
+	74 Arrange
+	75 Vector
+	76 Plugins
+	77 Widgets
+	78 Window
+	79 Help
+
+The focused UI element is 21 tab (selected) Add the final details, Value: 1

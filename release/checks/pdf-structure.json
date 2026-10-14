@@ -1,0 +1,627 @@
+[
+  {
+    "file": "test/out/booklet.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/booklet.pdf\nPDF Version: 1.7\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 4,
+    "boxes": [
+      {
+        "trim": {
+          "x": 36.43307086614173,
+          "y": 36.43307086614173,
+          "width": 1133.8582677165355,
+          "height": 813.5433070866143
+        },
+        "bleed": {
+          "x": 27.92913385826772,
+          "y": 27.92913385826772,
+          "width": 1150.8661417322837,
+          "height": 830.5511811023623
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 1206.7244094488192,
+          "height": 886.4094488188978
+        }
+      },
+      {
+        "trim": {
+          "x": 36.43307086614173,
+          "y": 36.43307086614173,
+          "width": 1133.8582677165355,
+          "height": 813.5433070866143
+        },
+        "bleed": {
+          "x": 27.92913385826772,
+          "y": 27.92913385826772,
+          "width": 1150.8661417322837,
+          "height": 830.5511811023623
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 1206.7244094488192,
+          "height": 886.4094488188978
+        }
+      },
+      {
+        "trim": {
+          "x": 36.43307086614173,
+          "y": 36.43307086614173,
+          "width": 1133.8582677165355,
+          "height": 813.5433070866143
+        },
+        "bleed": {
+          "x": 27.92913385826772,
+          "y": 27.92913385826772,
+          "width": 1150.8661417322837,
+          "height": 830.5511811023623
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 1206.7244094488192,
+          "height": 886.4094488188978
+        }
+      },
+      {
+        "trim": {
+          "x": 36.43307086614173,
+          "y": 36.43307086614173,
+          "width": 1133.8582677165355,
+          "height": 813.5433070866143
+        },
+        "bleed": {
+          "x": 27.92913385826772,
+          "y": 27.92913385826772,
+          "width": 1150.8661417322837,
+          "height": 830.5511811023623
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 1206.7244094488192,
+          "height": 886.4094488188978
+        }
+      }
+    ],
+    "outputIntents": false
+  },
+  {
+    "file": "test/out/browser-export.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/browser-export.pdf\nPDF Version: 1.6\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 26.92913385826772,
+          "y": 26.92913385826772,
+          "width": 595.2755905511812,
+          "height": 841.8897637795277
+        },
+        "bleed": {
+          "x": 26.92913385826772,
+          "y": 26.92913385826772,
+          "width": 595.2755905511812,
+          "height": 841.8897637795277
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 649.1338582677166,
+          "height": 895.7480314960632
+        }
+      }
+    ],
+    "outputIntents": true
+  },
+  {
+    "file": "test/out/duplex.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/duplex.pdf\nPDF Version: 1.7\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 2,
+    "boxes": [
+      {
+        "trim": {
+          "x": 0,
+          "y": 0,
+          "width": 841.8897637795277,
+          "height": 595.2755905511812
+        },
+        "bleed": {
+          "x": 0,
+          "y": 0,
+          "width": 841.8897637795277,
+          "height": 595.2755905511812
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 841.8897637795277,
+          "height": 595.2755905511812
+        }
+      },
+      {
+        "trim": {
+          "x": 0,
+          "y": 0,
+          "width": 841.8897637795277,
+          "height": 595.2755905511812
+        },
+        "bleed": {
+          "x": 0,
+          "y": 0,
+          "width": 841.8897637795277,
+          "height": 595.2755905511812
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 841.8897637795277,
+          "height": 595.2755905511812
+        }
+      }
+    ],
+    "outputIntents": false
+  },
+  {
+    "file": "test/out/figma-real.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/figma-real.pdf\nPDF Version: 1.6\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 36.43307086614173,
+          "y": 36.43307086614173,
+          "width": 595.2755905511812,
+          "height": 841.8897637795277
+        },
+        "bleed": {
+          "x": 27.92913385826772,
+          "y": 27.92913385826772,
+          "width": 612.2834645669292,
+          "height": 858.8976377952757
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 668.1417322834646,
+          "height": 914.7559055118112
+        }
+      }
+    ],
+    "outputIntents": true
+  },
+  {
+    "file": "test/out/figma-real2.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/figma-real2.pdf\nPDF Version: 1.6\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 36.43307086614173,
+          "y": 36.43307086614173,
+          "width": 595.2755905511812,
+          "height": 841.8897637795277
+        },
+        "bleed": {
+          "x": 27.92913385826772,
+          "y": 27.92913385826772,
+          "width": 612.2834645669292,
+          "height": 858.8976377952757
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 668.1417322834646,
+          "height": 914.7559055118112
+        }
+      }
+    ],
+    "outputIntents": true
+  },
+  {
+    "file": "test/out/figma-real3.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/figma-real3.pdf\nPDF Version: 1.6\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 36.43307086614173,
+          "y": 36.43307086614173,
+          "width": 595.2755905511812,
+          "height": 841.8897637795277
+        },
+        "bleed": {
+          "x": 27.92913385826772,
+          "y": 27.92913385826772,
+          "width": 612.2834645669292,
+          "height": 858.8976377952757
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 668.1417322834646,
+          "height": 914.7559055118112
+        }
+      }
+    ],
+    "outputIntents": true
+  },
+  {
+    "file": "test/out/figma-x1a.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/figma-x1a.pdf\nPDF Version: 1.3\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 36.43307086614173,
+          "y": 36.43307086614173,
+          "width": 595.2755905511812,
+          "height": 841.8897637795277
+        },
+        "bleed": {
+          "x": 27.92913385826772,
+          "y": 27.92913385826772,
+          "width": 612.2834645669292,
+          "height": 858.8976377952757
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 668.1417322834646,
+          "height": 914.7559055118112
+        }
+      }
+    ],
+    "outputIntents": true
+  },
+  {
+    "file": "test/out/locked.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/locked.pdf\nPDF Version: 1.7\nR = 6\nP = -4\nUser password = 印刷123\nSupplied password is user password\nextract for accessibility: allowed\nextract for any purpose: allowed\nprint low resolution: allowed\nprint high resolution: allowed\nmodify document assembly: allowed\nmodify forms: allowed\nmodify annotations: allowed\nmodify other: allowed\nmodify anything: allowed\nstream encryption method: AESv3\nstring encryption method: AESv3\nfile encryption method: AESv3\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "note": "AES-encrypted fixture verified with its public test password using qpdf; not parsed with pdf-lib."
+  },
+  {
+    "file": "test/out/nup.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/nup.pdf\nPDF Version: 1.7\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 2,
+    "boxes": [
+      {
+        "trim": {
+          "x": 0,
+          "y": 0,
+          "width": 841.8897637795277,
+          "height": 1190.5511811023623
+        },
+        "bleed": {
+          "x": 0,
+          "y": 0,
+          "width": 841.8897637795277,
+          "height": 1190.5511811023623
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 841.8897637795277,
+          "height": 1190.5511811023623
+        }
+      },
+      {
+        "trim": {
+          "x": 0,
+          "y": 0,
+          "width": 841.8897637795277,
+          "height": 1190.5511811023623
+        },
+        "bleed": {
+          "x": 0,
+          "y": 0,
+          "width": 841.8897637795277,
+          "height": 1190.5511811023623
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 841.8897637795277,
+          "height": 1190.5511811023623
+        }
+      }
+    ],
+    "outputIntents": false
+  },
+  {
+    "file": "test/out/perside.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/perside.pdf\nPDF Version: 1.7\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 47.771653543307096,
+          "y": 42.102362204724415,
+          "width": 566.9291338582677,
+          "height": 813.5433070866143
+        },
+        "bleed": {
+          "x": 33.5984251968504,
+          "y": 33.5984251968504,
+          "width": 581.1023622047244,
+          "height": 830.5511811023623
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 648.2992125984251,
+          "height": 897.748031496063
+        }
+      }
+    ],
+    "outputIntents": false
+  },
+  {
+    "file": "test/out/presskit-test.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/presskit-test.pdf\nPDF Version: 1.6\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 31.181102362204726,
+          "y": 31.181102362204726,
+          "width": 595.2755905511812,
+          "height": 841.8897637795277
+        },
+        "bleed": {
+          "x": 31.181102362204726,
+          "y": 31.181102362204726,
+          "width": 595.2755905511812,
+          "height": 841.8897637795277
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 657.6377952755906,
+          "height": 904.2519685039372
+        }
+      }
+    ],
+    "outputIntents": true
+  },
+  {
+    "file": "test/out/scaled.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/scaled.pdf\nPDF Version: 1.7\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 36.43307086614173,
+          "y": 36.43307086614173,
+          "width": 5669.291338582678,
+          "height": 8135.433070866143
+        },
+        "bleed": {
+          "x": 27.92913385826772,
+          "y": 27.92913385826772,
+          "width": 5686.299212598426,
+          "height": 8152.440944881891
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 5742.157480314961,
+          "height": 8208.299212598426
+        }
+      }
+    ],
+    "outputIntents": false
+  },
+  {
+    "file": "test/out/spreads.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/spreads.pdf\nPDF Version: 1.7\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 2,
+    "boxes": [
+      {
+        "trim": {
+          "x": 18.216535433070867,
+          "y": 18.216535433070867,
+          "width": 283.46456692913387,
+          "height": 406.77165354330714
+        },
+        "bleed": {
+          "x": 13.96456692913386,
+          "y": 13.96456692913386,
+          "width": 291.9685039370079,
+          "height": 415.27559055118115
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 319.8976377952756,
+          "height": 443.2047244094489
+        }
+      },
+      {
+        "trim": {
+          "x": 18.216535433070867,
+          "y": 18.216535433070867,
+          "width": 566.9291338582677,
+          "height": 406.77165354330714
+        },
+        "bleed": {
+          "x": 13.96456692913386,
+          "y": 13.96456692913386,
+          "width": 575.4330708661419,
+          "height": 415.27559055118115
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 603.3622047244096,
+          "height": 443.2047244094489
+        }
+      }
+    ],
+    "outputIntents": false
+  },
+  {
+    "file": "test/out/v-cmyk-down.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/v-cmyk-down.pdf\nPDF Version: 1.6\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 40.68503937007874,
+          "y": 40.68503937007874,
+          "width": 566.9291338582677,
+          "height": 813.5433070866143
+        },
+        "bleed": {
+          "x": 32.181102362204726,
+          "y": 32.181102362204726,
+          "width": 583.9370078740158,
+          "height": 830.5511811023623
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 648.2992125984252,
+          "height": 894.9133858267718
+        }
+      }
+    ],
+    "outputIntents": true
+  },
+  {
+    "file": "test/out/v-gray.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/v-gray.pdf\nPDF Version: 1.7\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 40.68503937007874,
+          "y": 40.68503937007874,
+          "width": 566.9291338582677,
+          "height": 813.5433070866143
+        },
+        "bleed": {
+          "x": 32.181102362204726,
+          "y": 32.181102362204726,
+          "width": 583.9370078740158,
+          "height": 830.5511811023623
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 648.2992125984252,
+          "height": 894.9133858267718
+        }
+      }
+    ],
+    "outputIntents": false
+  },
+  {
+    "file": "test/out/v-rgb.pdf",
+    "syntaxExit": 3,
+    "detail": "checking test/out/v-rgb.pdf\nPDF Version: 1.7\nFile is not encrypted\nFile is not linearized\nWARNING: test/out/v-rgb.pdf (offset 27928): error decoding stream data for object 46 0: Pl_DCT::decompress: JPEG data is corrupt\nWARNING: test/out/v-rgb.pdf (offset 27928): stream will be re-processed without filtering to avoid data loss\nqpdf: operation succeeded with warnings\n",
+    "note": "Inspect warnings or password-protected output separately"
+  },
+  {
+    "file": "test/out/x1a.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/x1a.pdf\nPDF Version: 1.3\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 36.43307086614173,
+          "y": 36.43307086614173,
+          "width": 566.9291338582677,
+          "height": 813.5433070866143
+        },
+        "bleed": {
+          "x": 27.92913385826772,
+          "y": 27.92913385826772,
+          "width": 583.9370078740158,
+          "height": 830.5511811023623
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 639.7952755905512,
+          "height": 886.4094488188978
+        }
+      }
+    ],
+    "outputIntents": true
+  },
+  {
+    "file": "test/out/x3.pdf",
+    "syntaxExit": 0,
+    "detail": "checking test/out/x3.pdf\nPDF Version: 1.3\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 36.43307086614173,
+          "y": 36.43307086614173,
+          "width": 566.9291338582677,
+          "height": 813.5433070866143
+        },
+        "bleed": {
+          "x": 27.92913385826772,
+          "y": 27.92913385826772,
+          "width": 583.9370078740158,
+          "height": 830.5511811023623
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 639.7952755905512,
+          "height": 886.4094488188978
+        }
+      }
+    ],
+    "outputIntents": true
+  },
+  {
+    "file": "release/checks/inkpaper-release-smoke.pdf",
+    "syntaxExit": 0,
+    "detail": "checking release/checks/inkpaper-release-smoke.pdf\nPDF Version: 1.7\nFile is not encrypted\nFile is not linearized\nNo syntax or stream encoding errors found; the file may still contain\nerrors that qpdf cannot detect\n",
+    "pages": 1,
+    "boxes": [
+      {
+        "trim": {
+          "x": 36.43307086614173,
+          "y": 36.43307086614173,
+          "width": 255.1181102362205,
+          "height": 153.07086614173227
+        },
+        "bleed": {
+          "x": 27.92913385826772,
+          "y": 27.92913385826772,
+          "width": 272.12598425196853,
+          "height": 170.0787401574803
+        },
+        "media": {
+          "x": 0,
+          "y": 0,
+          "width": 327.98425196850394,
+          "height": 225.93700787401576
+        }
+      }
+    ],
+    "outputIntents": false
+  }
+]

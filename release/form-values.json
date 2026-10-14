@@ -1,0 +1,18 @@
+{
+  "name": "Inkpaper 纸墨",
+  "tagline": "Prepare print layouts, check risks and export CMYK files locally in Figma.",
+  "description": "Inkpaper brings print preparation, checks and export into Figma. Color conversion and file generation run locally. The plugin has no network access and requires no plugin account.\n\n• Prepare business cards, posters, booklets, folded layouts and packaging with dimensions, bleed and guides.\n• Check print risks such as image resolution, thin strokes, small text and missing fonts, and locate affected layers.\n• Import ICC profiles and configure CMYK, spot colors, overprint and color mappings.\n• Preview separations, ink coverage and print color effects.\n• Configure crop marks, imposition and PDF/X output options; export PDF, TIFF, JPEG or PNG.\n• Use page numbering, physical-size measurement and box dieline tools.\n\nTo start, select frames, import the ICC profile supplied by your printer for CMYK output, check risks, configure your export and generate files. Have your printer preflight the output and confirm it before production.\n\nLimitations: third-party ICC profiles and commercial spot-color libraries are not included. Without an ICC profile, ordinary CMYK output is approximate; PDF/X output requires CMYK mode and a valid ICC profile. Screen previews cannot replace a proof. PDF/X-1a and X-3 exports may rasterize an entire page, including text, when transparency needs flattening. Selecting a PDF/X output option is not independent certification of conformance. Confirm actual output using your printer’s professional preflight workflow. Continuing after a warning does not establish print suitability.\n\nEight interface languages: Simplified Chinese, Traditional Chinese, English, Japanese, Korean, Spanish, German and French.\n\nPrivacy: no designs or usage logs are sent to the developer. ICC profiles, swatches, presets and preferences use Figma plugin storage. Frame print metadata, text modes and explicitly saved color mappings are stored in the Figma file and shared with it. External ICC help links open in your browser. Figma’s own storage and collaboration follow Figma’s service policies.\n\nSupport: onevalar@gmail.com. Include the plugin version, platform, reproduction steps and export settings. Please do not send confidential design files.",
+  "category": "Design tools → Import & export",
+  "support": "onevalar@gmail.com",
+  "publisher": "OneValar",
+  "id": "1691712698137473867",
+  "free": true,
+  "assets": [
+    "release/assets/icon-128.png",
+    "release/assets/cover-1920x1080.png",
+    "release/assets/01-export-1920x1080.png",
+    "release/assets/02-dark-1920x1080.png",
+    "release/assets/03-check-1920x1080.png"
+  ],
+  "finalPublishClicked": false
+}

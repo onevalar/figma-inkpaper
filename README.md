@@ -72,3 +72,8 @@ node test/raster.mjs    # CMYK / RGB / 灰度 TIFF、JPEG、PNG
 - 界面回归需要 `agent-browser`，不依赖 ICC；通过真实点击和键盘操作验证语言、单位、资源入口、专业设置持久化、风险确认、精确数值与专色名输入及导出参数。`node test/preview.mjs` 可打包实际界面与测试画板供评审；预览不连接真实 Figma，样例不能用于送印。
 - 翻译：翻译表在 `src/i18n/dict.ts`。第一列是简体中文原文，后面依次是英、日、韩、西、德、法。新增界面文字后，在测试页切换语言，可以列出漏翻的条目。
 - 功能对照：竞品调研和功能对照见 [FEATURES.md](FEATURES.md)。
+
+## 免费发布准备（2026-10-13）
+
+支持邮箱：onevalar@gmail.com。正式 Figma ID 已分配为 `1691712698137473867`；根清单与正式包 `release/package/` 均使用正式 ID。旧 ID 入口保留在 `manifest.legacy.json`；当前测试文件的完整迁移已逐项校验。
+发布材料、实际验证结果与剩余工作见 [上架检查报告](release/AUDIT.md) 和 [发布流程](PUBLISHING.md)。本轮没有提交审核。JSON 预设导出不包含 ICC/色板，切换 ID 前还需评估文件私有印刷数据迁移。

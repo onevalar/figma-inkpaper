@@ -1,0 +1,41 @@
+· 转换颜色：A4 测试
+· 合成印刷文件…
+· 完成
+[
+ {
+  "images": [
+   {
+    "ref": "27 0 R",
+    "w": 600,
+    "h": 400,
+    "ppi": 169,
+    "converted": true
+   },
+   {
+    "ref": "30 0 R",
+    "w": 300,
+    "h": 300,
+    "ppi": 152,
+    "converted": true
+   },
+   {
+    "ref": "33 0 R",
+    "w": 60,
+    "h": 40,
+    "ppi": 38,
+    "converted": true
+   }
+  ],
+  "hairlinesFixed": 0,
+  "richBlackFills": 0,
+  "overprintObjects": 18,
+  "spotsUsed": [
+   "PANTONE 485 C"
+  ],
+  "leftovers": [],
+  "page": "A4 测试",
+  "remainingRgb": 0,
+  "flattened": false
+ }
+]
+ms 304 6 colors

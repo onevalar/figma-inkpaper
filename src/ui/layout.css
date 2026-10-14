@@ -556,3 +556,5 @@ body {
     max-width: 220px;
   }
 }
+
+.license-text { white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 ui-monospace, "SFMono-Regular", Menlo, monospace; }

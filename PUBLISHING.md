@@ -1,131 +1,48 @@
-# Inkpaper 纸墨：上架 Figma 社区指南
+# Inkpaper 纸墨 · 免费上架准备
 
-整理日期：2026-10-08。Figma 的审核规范会更新，正式提交前请再看一遍官方页面（见文末链接）。
+2026-10-13。首发代码与材料已准备。未接受发布协议、未点击最终 Publish、未提交审核。支持邮箱：onevalar@gmail.com。
 
----
+## 当前清单和构建
 
-## 0. 总览
+根 `manifest.json` 和 `release/package/manifest.json` 均使用 Figma 实际分配的正式 ID `1691712698137473867`。真实运行身份已通过导出的备份核对。界面使用 Arc 组件（源码在 `src/components/arc`，许可见该目录 LICENSE），样式与脚本均内联，不依赖 CDN。
 
-| 阶段 | 要做什么 | 谁来做 |
-|---|---|---|
-| 账号准备 | 开启两步验证 | 你 |
-| 资料准备 | 图标、封面、截图、简介、隐私说明、支持渠道 | 可交给 Claude 准备，你确认 |
-| 插件调整 | 写入 Figma 分配的正式插件编号 | Claude |
-| 提交 | 在 Figma 桌面版里点「发布」并提交审核 | 你本人 |
-| 审核 | 等待 5–10 个工作日，有时更久 | Figma |
-| 上架后 | 更新随时发布，无需再审 | Claude 改代码，你点发布 |
+```sh
+npm run build
+npm run typecheck
+npm test
+node test/migration.mjs
+npm run test:exports
+node test/pdfx-preflight.mjs
+npm run release:prepare
+node scripts/preview.mjs
+```
 
----
+导出回归需要自己合法取得的 `test/fixtures/JapanColor2001Coated.icc`；不分发该文件。发布包 `release/inkpaper-1.0.0-release.zip` 只包含 manifest、code.js、ui.html 和第三方许可。Figma 从 manifest 指向的构建文件提交；ZIP 是可展开导入的准备包，不是上传入口。
 
-## 1. 账号准备
+## 提交资料
 
-- [ ] **开启两步验证（2FA）**：这是发布插件的前提。入口在 Figma「设置 → 安全」。
-- [ ] 如果你用 **Google 账号或公司 SSO** 登录 Figma，Figma 里无法开两步验证。需要先给账号设置邮箱密码登录，或者改用能开两步验证的账号。
-- [ ] 确认用哪个身份发布（见第 6 节「署名」）。
-- [ ] 确认 Figma 账号邮箱能正常收信，审核结果会发到这里。
+- 商店文案：[release/LISTING.md](release/LISTING.md)。
+- 隐私说明：[release/PRIVACY.md](release/PRIVACY.md)。
+- 128 px 图标、1920×1080 封面和 3 张更新后的轮播图：`release/assets/`。
+- 检查证据：[release/AUDIT.md](release/AUDIT.md)。
 
----
+此前发布表单已关闭，不能假定草稿字段仍保留。重新核对名称、免费选项、个人发布身份、onevalar@gmail.com、分类和图片；使用本轮更新的截图。协议由本人阅读接受，最终 Publish 由本人执行或另行明确授权。提交后仍需等待 Figma 审核，不承诺固定审核时间。
 
-## 2. 上架资料清单
+## 旧版数据迁移
 
-### 2.1 图片
+当前测试文件已经从 `presskit-print-export-local` 迁移到正式 ID：4 项存储和 16 个图层元数据逐项相同，含 ICC 二进制；重新打开后中文偏好、ICC、尺寸与文件名恢复。证据见 `release/checks/migration-evidence.json`。旧数据未删除。
 
-| 资料 | 建议尺寸 | 说明 |
-|---|---|---|
-| 插件图标 | 128 × 128 | 方形，在插件菜单和商店列表里显示。图形简单，小尺寸也要看得清 |
-| 封面图 | 1920 × 960 | 商店详情页最显眼的横幅，一句话说清楚插件做什么 |
-| 功能截图 / 轮播图 | 与封面同尺寸 | 建议 3–6 张：导出界面、印刷预览、预检评分、拼版效果、刀版 |
+其他旧 Figma 文件需要逐文件迁移：在旧 ID 的 `manifest.legacy.json` 中打开文件，设置 → 旧版数据迁移 → 导出完整迁移备份；在同一文件中运行正式 ID，再导入备份并重新打开。备份包含 ICC、色板、偏好和图层私有信息，导入会覆盖对应项；不要公开分享或用于上架。当前私有备份位于 git 忽略的 `release/private/`，不在发布包内。不得仅凭更换 ID 假定所有文件数据自动迁移。
 
-- 以 Figma 发布窗口里提示的尺寸为准。
-- Figma 自带尺寸预设：选画板工具，在右侧面板的预设列表里找「Figma Community」分类，里面有插件图标和插件封面。
-- 截图里不要出现别人的商标或版权图片，用我们自己的测试稿。
+## PDF/X 检查范围
 
-### 2.2 文字
+三种 PDF/X 输出通过本地针对性回归，检测缺少输出意图、错误 ICC 通道、页面框冲突、字体未嵌入、透明度、RGB、动态内容与加密等条件。真实正式 ID 的 PDF/X-4 名片输出通过针对性预检、qpdf 和目视渲染。它们不是完整 ISO 合规认证。
 
-| 项目 | 要求 / 建议 |
-|---|---|
-| 名称 | Inkpaper 纸墨 |
-| 一句话简介 | 中文：在 Figma 里直接导出可交给印刷厂的 CMYK 文件，全部本地处理。英文：Print-ready CMYK PDFs from Figma — bleed, crop marks, spot colours, PDF/X, all processed locally. |
-| 详细说明 | 中英双语。按「能做什么 → 怎么用 → 隐私说明 → 常见问题」组织 |
-| 标签 | print, CMYK, PDF, PDF/X, bleed, crop marks, prepress, packaging, dieline, imposition, 印刷 |
-| 支持渠道 | 必填。一个邮箱，或者一个公开的帮助页面（例如公开的 GitHub 讨论区、Notion 页面） |
+callas 或 Acrobat 独立预检是可选增强验证，不是 Figma 上架条件；用户不需要为此注册账号。商店文案没有“已认证”或“保证送印”承诺，实际文件仍应由印刷厂确认。
 
-详细说明要写清楚的要点：
-- 第一次使用要导入印刷厂给的 ICC 配置文件（插件不内置，原因是 Adobe 的许可不允许打包分发），并附免费下载渠道。
-- 支持 8 种界面语言。
-- 所有处理都在本机完成，不联网，不上传设计稿。
+## 官方来源（2026-10-13 核对）
 
-### 2.3 隐私说明（草稿，可直接用）
-
-> Inkpaper 纸墨不收集、不存储、不上传任何个人信息或设计文件。所有颜色转换和文件生成都在你的电脑上完成，插件没有任何联网权限。你导入的 ICC 配置文件、预设和颜色映射，只保存在你本机的 Figma 插件存储里，或者在你选择时保存进当前 Figma 文件。
-
-> Inkpaper does not collect, store or transmit any personal data or design files. All colour conversion and file generation happen on your computer; the plugin has no network access. ICC profiles, presets and colour maps you import are kept in Figma's local plugin storage on your device, or in the current Figma file if you choose so.
-
----
-
-## 3. 提交前检查（对照 Figma 审核规范）
-
-- [ ] **稳定**：所有功能都在真实 Figma 里跑过一遍，没有报错和卡死。
-- [ ] **不乱改用户文件**：导出时都在副本上处理，用完删除；修改设计稿的操作（加出血、补足出血、改色等）都要用户主动点击。
-- [ ] **联网透明**：插件配置里写明完全不联网，审核里是加分项。
-- [ ] **存储**：只用 Figma 自带的插件存储和文件数据。
-- [ ] **版权**：
-  - 不内置 Adobe ICC 配置文件和潘通色库。
-  - 第三方组件都是允许商用的开源许可：LittleCMS、pdf-lib、pako、OpenCC、noble。
-  - 在详细说明或帮助页面里列出这些开源组件。
-- [ ] **名称**：在 Figma 社区搜索「Inkpaper」，确认没有同名插件。
-- [ ] **界面**：在浅色和深色主题下都看一遍；中英文界面各看一遍。
-- [ ] **支持渠道**：已经建好，能访问。
-- [ ] 法律相关：Figma 建议上架前了解自己的法律义务（隐私政策等），必要时咨询专业人士。
-
----
-
-## 4. 提交流程（Figma 桌面版）
-
-1. 只能在 **Figma 桌面版**提交，网页版不行。
-2. 菜单「插件 → 开发 → 管理开发中的插件」，在 Inkpaper 纸墨上选「发布」。
-3. **第一次发布时 Figma 会分配一个正式插件编号**，需要写回插件配置并重新打包（交给 Claude 处理）。
-   - 现在的编号是本地开发用的临时编号。
-   - 换编号后，Figma 会把它当成一个新插件。**你本机已导入的 ICC 配置文件、预设、颜色映射需要重新导入一次**；可以先用「导出预设和颜色映射（JSON）」备份。
-   - 你已经用插件建好的印刷画板不受影响，画板上的数据和插件编号无关。
-4. 在发布窗口里填写名称、简介、详细说明、标签、支持渠道，上传图标、封面、截图。
-5. 选择**免费**（见第 6 节）。
-6. 阅读并同意 Figma 的开发者条款、创作者协议和社区条款。
-7. 点击提交。插件会出现在「已发布」区域，标记为「审核中」。
-
----
-
-## 5. 审核与上架后
-
-- **审核时间**：Figma 的目标是 5–10 个工作日给结果，有时会更久。结果发到 Figma 账号邮箱。
-- **审核期间**：可以继续推送更新。
-- **被拒**：按反馈修改后重新提交。
-- **通过后**：插件出现在 Figma 社区；以后的更新**不需要再审核**，发布即生效。
-- **更新流程**：Claude 改代码并打包 → 你在「管理开发中的插件」里对 Inkpaper 选「发布新版本」，填写更新说明。
-- **长期维护**：留意 Figma 插件接口的变化；及时回复支持渠道里的问题。
-
----
-
-## 6. 需要你来做的决定
-
-### 6.1 定价
-- **建议先免费上架。**
-- 收费插件需要先申请成为 Figma 认可的创作者，还受所在国家和地区的限制，流程长很多。
-- 免费上架后，以后仍可以再申请收费；但已经免费的功能改成收费，容易引起用户不满。
-
-### 6.2 署名
-- 用**个人主页**发布：插件挂在你的个人名下。
-- 用**团队或公司**名义发布：需要对应的 Figma 组织或团队主页。
-- 发布后转移所有权比较麻烦，提交前想清楚。
-
-### 6.3 只在公司内部用（可选）
-- 如果只想给公司内部用，可以选择「仅在组织内发布」（需要 Figma 组织版）。这种方式**不需要审核**，但外部用户看不到。
-
----
-
-## 7. 官方参考
-
-- 发布插件到社区：https://help.figma.com/hc/en-us/articles/360042293394
-- 插件审核规范：https://help.figma.com/hc/en-us/articles/360039958914
-- 发布流程教程：https://help.figma.com/hc/en-us/articles/4407531267607
-- 开启两步验证：https://help.figma.com/hc/en-us/articles/360039817634
+- [发布 classic plugins](https://help.figma.com/hc/en-us/articles/360042293394-Publish-classic-plugins-to-the-Figma-Community)
+- [审核规范](https://help.figma.com/hc/en-us/articles/360039958914-Plugin-and-widget-review-guidelines)
+- [发布前边界情况](https://developers.figma.com/docs/plugins/publishing/)
+- [manifest 与 ID](https://developers.figma.com/docs/plugins/manifest/)

@@ -224,6 +224,8 @@ export async function compose(sources: PageSource[], o: ComposeOptions): Promise
   if (o.bookmarks && bookmarks.length > 1) addBookmarks(out, bookmarks);
 
   if (o.pdfx !== 'none' && o.outputIntent && o.mode !== 'rgb') {
+    // ISO 15930 requires exactly one of TrimBox and ArtBox, never both.
+    for (const page of out.getPages()) page.node.delete(PDFName.of('ArtBox'));
     const info = ctx.lookup(ctx.trailerInfo.Info) as PDFDict;
     info.set(PDFName.of('Trapped'), PDFName.of('False'));
     if (o.pdfx === 'x4') {
